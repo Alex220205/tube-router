@@ -37,15 +37,29 @@ WHAT'S NEW
 """
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# backend/app/config.py -> backend/app -> backend -> repository root.
+#
+# An absolute path, because env_file is otherwise resolved against the working
+# directory: running the API from backend/ looked for backend/.env, which does
+# not exist, so the root .env was silently never read. Compose hid that by
+# injecting the variables directly, so it would only have surfaced the first
+# time the API was run outside Docker.
+#
+# Inside the image this resolves to /app/.env, which is not there — .env is
+# gitignored and dockerignored. A missing env_file is not an error, and the
+# values arrive from the environment instead.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
     """Settings for the web service, read from the environment."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_REPO_ROOT / ".env",
         env_file_encoding="utf-8",
         # Compose injects frontend and Postgres variables into the same
         # environment. Ignoring unknown names keeps one shared .env workable.
@@ -63,7 +77,11 @@ class Settings(BaseSettings):
     # Parsed by cors_origin_list below.
     cors_origins: str = "http://localhost:5173"
 
-    log_level: str = "info"
+    # No log_level here. It existed in .env.example, in docker-compose.yml and
+    # on this model, and nothing read it — uvicorn's level is not set from it.
+    # A setting that looks configurable and is not is worse than an absent
+    # one, because it sends you looking for the bug somewhere else. It comes
+    # back when something actually configures logging.
     version: str = "0.1.0"
 
     @property

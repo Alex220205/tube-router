@@ -66,15 +66,32 @@ describe('App', () => {
     expect(screen.queryByText('degraded')).not.toBeInTheDocument()
   })
 
-  it('requests health from the configured API base URL', async () => {
+  it('reports a timeout as its own message, not a generic failure', async () => {
+    // What AbortSignal.timeout actually throws. Its own message says only
+    // that the operation was aborted, which is why api.js rewrites it.
+    globalThis.fetch = vi
+      .fn()
+      .mockRejectedValue(
+        new DOMException('The operation was aborted due to timeout', 'TimeoutError'),
+      )
+
+    render(<App />)
+
+    expect(await screen.findByText('API unreachable')).toBeInTheDocument()
+    expect(screen.getByText(/timed out after 5000ms/)).toBeInTheDocument()
+  })
+
+  it('requests health from the configured API base URL, with a timeout', async () => {
     mockHealth({ status: 'ok', database: 'ok', version: '0.1.0' })
 
     render(<App />)
     await screen.findByText('0.1.0')
 
     // The URL comes from VITE_API_URL, not from a literal in a component.
+    // The signal is asserted because a fetch without one waits forever.
     expect(globalThis.fetch).toHaveBeenCalledWith(
       `${import.meta.env.VITE_API_URL ?? 'http://localhost:8000'}/health`,
+      expect.objectContaining({ signal: expect.anything() }),
     )
   })
 })

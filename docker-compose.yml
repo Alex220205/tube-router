@@ -25,7 +25,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "${POSTGRES_PORT}:5432"
+      # Bound to the loopback interface, not 0.0.0.0. A bare "5432:5432"
+      # publishes the database to every network the machine is on, and the
+      # development password is in .env.example for anyone to read. A GUI
+      # client on this machine still connects exactly as before.
+      - "127.0.0.1:${POSTGRES_PORT}:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
@@ -44,7 +48,8 @@ services:
   redis:
     image: redis:7.4-alpine
     ports:
-      - "${REDIS_PORT}:6379"
+      # Loopback only, as with Postgres. Redis has no password at all.
+      - "127.0.0.1:${REDIS_PORT}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -64,8 +69,10 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       CORS_ORIGINS: ${CORS_ORIGINS}
-      LOG_LEVEL: ${LOG_LEVEL}
     ports:
+      # Left on all interfaces, unlike db and redis: these two are the
+      # application, and reaching the demo from a phone on the same network is
+      # occasionally useful. The database being reachable never is.
       - "${API_PORT}:8000"
     depends_on:
       db:
@@ -73,6 +80,17 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
+      # Deliberately passes on any 2xx, which means this container reports
+      # healthy even while /health says the database is unreachable — verified
+      # by stopping db and watching `compose ps` stay green.
+      #
+      # That is the intended behaviour: this check answers "is the API
+      # serving", and it is. Postgres reports on Postgres through its own
+      # healthcheck above. Making this one fail on a degraded database would
+      # have it lie about a service it does not own, and would block the
+      # frontend from starting — so the page that exists to display "database
+      # unreachable" would never load. See docs/DECISIONS.md.
+      #
       # No curl or wget in python:3.12-slim, and adding one to a production
       # image for the sake of a healthcheck is not worth it. Python is
       # already here.
