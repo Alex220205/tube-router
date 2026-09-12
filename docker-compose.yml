@@ -1,0 +1,55 @@
+# The whole stack, one command.
+#
+#   cp .env.example .env
+#   docker compose up
+#
+# Phase 0 runs the two data services. The API joins in the next commit and the
+# frontend in the one after, so every commit leaves a stack that starts.
+#
+# Images are pinned to exact versions. "latest" means a clean clone in six
+# months gets something different from what was tested, which defeats the
+# point of shipping a compose file at all.
+
+name: tube-router
+
+services:
+  # --- Postgres with PostGIS -------------------------------------------------
+  # PostGIS rather than plain Postgres because station coordinates are stored
+  # as geography(Point, 4326) from Phase 1, not as two float columns. That
+  # makes "stations near here" an indexed query rather than a full scan with
+  # haversine in Python.
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      # Services that depend on this one wait for the check to pass, not
+      # merely for the container to start. Postgres accepts connections
+      # several seconds after the process exists, and without this the API
+      # loses the race on a cold start and exits.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # --- Redis -----------------------------------------------------------------
+  # Nothing uses this until Phase 6. It runs from Phase 0 so that the stack
+  # described by this file is the stack the project ends up with.
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "${REDIS_PORT}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  db_data:
