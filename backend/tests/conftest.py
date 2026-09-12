@@ -158,7 +158,18 @@ async def db(migrated_database: str) -> AsyncIterator[AsyncSession]:
     engine = create_async_engine(migrated_database, poolclass=NullPool)
     async with engine.connect() as connection:
         transaction = await connection.begin()
-        session = AsyncSession(bind=connection, expire_on_commit=False)
+        session = AsyncSession(
+            bind=connection,
+            expire_on_commit=False,
+            # The session runs inside a SAVEPOINT rather than directly on the
+            # outer transaction. It matters because most of these tests
+            # deliberately provoke an IntegrityError: without this, the
+            # session's own rollback tears down the transaction this fixture
+            # is still holding, and the cleanup below then rolls back
+            # something already gone — which SQLAlchemy warns about, on every
+            # such test. A warning that is always present is one nobody reads.
+            join_transaction_mode="create_savepoint",
+        )
         try:
             yield session
         finally:
