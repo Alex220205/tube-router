@@ -36,4 +36,8 @@ package = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Every test in this suite is async; declaring it here avoids decorating each
+# one with @pytest.mark.asyncio.
 asyncio_mode = "auto"
+# Makes `app` importable when pytest runs from backend/.
+pythonpath = ["."]

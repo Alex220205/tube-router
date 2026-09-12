@@ -51,5 +51,40 @@ services:
       timeout: 3s
       retries: 5
 
+  # --- API -------------------------------------------------------------------
+  # Built from the production Dockerfile with no source mount and no
+  # --reload, so what runs here is what would ship. Code changes need a
+  # rebuild; that is the trade, and it is the right one while the surface is
+  # this small.
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      LOG_LEVEL: ${LOG_LEVEL}
+    ports:
+      - "${API_PORT}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # No curl or wget in python:3.12-slim, and adding one to a production
+      # image for the sake of a healthcheck is not worth it. Python is
+      # already here.
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8000/health')
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 volumes:
   db_data:
