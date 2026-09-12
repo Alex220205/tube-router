@@ -32,7 +32,15 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Line, Segment, Station, StationComplex, TransportMode
+from app.models import (
+    Interchange,
+    Line,
+    Segment,
+    Station,
+    StationComplex,
+    StationLine,
+    TransportMode,
+)
 
 # Declared here rather than imported from conftest: tests/ is not a package,
 # so `from .conftest import ...` would not resolve, and pytest's own import of
@@ -276,6 +284,149 @@ async def test_the_same_link_on_two_lines_is_allowed(db: AsyncSession) -> None:
 
     count = await db.execute(text("SELECT count(*) FROM segments"))
     assert count.scalar_one() == 2
+
+
+# --- station_lines -----------------------------------------------------------
+
+
+async def test_duplicate_station_line_pair_is_rejected(db: AsyncSession) -> None:
+    # The composite primary key. A station serves a line once or not at all.
+    line = await a_line(db)
+    station = await a_station(db, naptan_id="940GZZLUOXC")
+
+    db.add(StationLine(station_id=station.id, line_id=line.id))
+    await db.flush()
+
+    db.add(StationLine(station_id=station.id, line_id=line.id))
+    with pytest.raises(IntegrityError):
+        await db.flush()
+
+
+async def test_a_station_can_serve_several_lines(db: AsyncSession) -> None:
+    # The case the 2021 schema could not express without duplicating the
+    # station row. Oxford Circus is on three lines; here that is three rows in
+    # a join table and one station.
+    station = await a_station(db, naptan_id="940GZZLUOXC", name="Oxford Circus")
+    for code in ("bakerloo", "central", "victoria"):
+        line = await a_line(db, code=code)
+        db.add(StationLine(station_id=station.id, line_id=line.id))
+    await db.flush()
+
+    result = await db.execute(
+        text("SELECT count(*) FROM station_lines WHERE station_id = :sid"),
+        {"sid": station.id},
+    )
+    assert result.scalar_one() == 3
+
+
+async def test_step_free_defaults_to_false_on_a_raw_insert(db: AsyncSession) -> None:
+    # The server default, not the ORM one. A seed script doing bulk inserts
+    # bypasses the Python-side default entirely, and "absence of evidence is
+    # not step-free" has to hold on that path too.
+    line = await a_line(db)
+    station = await a_station(db, naptan_id="940GZZLUOXC")
+
+    await db.execute(
+        text("INSERT INTO station_lines (station_id, line_id) VALUES (:s, :l)"),
+        {"s": station.id, "l": line.id},
+    )
+
+    result = await db.execute(text("SELECT step_free_to_platform FROM station_lines"))
+    assert result.scalar_one() is False
+
+
+# --- interchanges ------------------------------------------------------------
+
+
+async def test_duplicate_interchange_is_rejected(db: AsyncSession) -> None:
+    station = await a_station(db, naptan_id="940GZZLUBNK")
+    northern = await a_line(db, code="northern")
+    central = await a_line(db, code="central")
+
+    for _ in range(2):
+        db.add(
+            Interchange(
+                station_id=station.id,
+                from_line_id=northern.id,
+                to_line_id=central.id,
+                seconds=180,
+            )
+        )
+
+    with pytest.raises(IntegrityError):
+        await db.flush()
+
+
+async def test_interchange_between_a_line_and_itself_is_rejected(
+    db: AsyncSession,
+) -> None:
+    station = await a_station(db, naptan_id="940GZZLUBNK")
+    northern = await a_line(db, code="northern")
+
+    db.add(
+        Interchange(
+            station_id=station.id,
+            from_line_id=northern.id,
+            to_line_id=northern.id,
+            seconds=180,
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        await db.flush()
+
+
+async def test_interchange_with_a_non_positive_duration_is_rejected(
+    db: AsyncSession,
+) -> None:
+    station = await a_station(db, naptan_id="940GZZLUBNK")
+    northern = await a_line(db, code="northern")
+    central = await a_line(db, code="central")
+
+    db.add(
+        Interchange(
+            station_id=station.id,
+            from_line_id=northern.id,
+            to_line_id=central.id,
+            seconds=0,
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        await db.flush()
+
+
+async def test_interchange_is_directional(db: AsyncSession) -> None:
+    # Northern to Central at Bank is not necessarily the same walk as Central
+    # to Northern — different platforms, sometimes a different passage. Both
+    # directions must be storable, with different costs.
+    station = await a_station(db, naptan_id="940GZZLUBNK")
+    northern = await a_line(db, code="northern")
+    central = await a_line(db, code="central")
+
+    db.add(
+        Interchange(
+            station_id=station.id,
+            from_line_id=northern.id,
+            to_line_id=central.id,
+            seconds=240,
+        )
+    )
+    db.add(
+        Interchange(
+            station_id=station.id,
+            from_line_id=central.id,
+            to_line_id=northern.id,
+            seconds=200,
+        )
+    )
+    await db.flush()
+
+    result = await db.execute(text("SELECT count(*) FROM interchanges"))
+    assert result.scalar_one() == 2
+
+
+# --- enum --------------------------------------------------------------------
 
 
 async def test_an_unknown_transport_mode_is_rejected(db: AsyncSession) -> None:

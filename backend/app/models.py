@@ -63,6 +63,7 @@ from sqlalchemy import (
     MetaData,
     String,
     UniqueConstraint,
+    false,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -280,3 +281,88 @@ class Segment(Base):
     # network on either 1 or 2 and left "fastest route" almost nothing to
     # discriminate on.
     seconds: Mapped[int] = mapped_column()
+
+
+class StationLine(Base):
+    """Which lines serve a station, and whether the platform is step-free.
+
+    Changed from 2021: station-to-line is many-to-many and the old schema had
+    no join table. Membership was only implied by which connection rows
+    happened to exist, so "which lines serve this station" was not a query you
+    could write.
+
+    The relationship was in the data all along, undeclared — the audit found
+    486 station rows for 346 stations, King's Cross appearing six times, one
+    row per (station, line) with nothing saying so. This table is those 198
+    duplicate rows, made explicit.
+    """
+
+    __tablename__ = "station_lines"
+
+    # Composite primary key. A station serves a line once or not at all, and
+    # saying so here removes the need for a separate unique constraint.
+    station_id: Mapped[int] = mapped_column(
+        ForeignKey("stations.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_id: Mapped[int] = mapped_column(
+        ForeignKey("lines.id", ondelete="CASCADE"), primary_key=True
+    )
+
+    # Here rather than on Station, because step-free access is a property of
+    # the station and line together. Green Park is step-free to some platforms
+    # and not others; a flag on stations would force one answer for a station
+    # with two. Defaults to false: absence of evidence is not step-free.
+    #
+    # server_default as well as the Python default, so the guarantee survives
+    # a bulk insert that bypasses the ORM — which is exactly what a seed
+    # script tends to do.
+    step_free_to_platform: Mapped[bool] = mapped_column(
+        default=False, server_default=false()
+    )
+
+
+class Interchange(Base):
+    """The cost of changing from one line to another at a station.
+
+    No 2021 equivalent. Changing line had no representation at all — not a
+    missing column, a missing idea — which is why the old router could neither
+    count changes nor weight them.
+
+    Stored rather than derived from station_lines. Deriving it would give
+    every line pair at a station the same walking time, and the walk between
+    the Northern and the Central at Bank is nothing like Circle to District at
+    Victoria.
+
+    This is what makes the (station, line) node expansion in the engine
+    possible: with a row per line pair, a change is an edge with a cost, so
+    the search can count it and price it.
+    """
+
+    __tablename__ = "interchanges"
+    __table_args__ = (
+        UniqueConstraint("station_id", "from_line_id", "to_line_id"),
+        CheckConstraint("seconds > 0", name="seconds_positive"),
+        # Changing from a line to itself is not a change. Same reasoning as
+        # the self-loop check on segments: a row that cannot mean anything
+        # should not be insertable.
+        CheckConstraint("from_line_id <> to_line_id", name="lines_differ"),
+        Index("ix_interchanges_station_id", "station_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    station_id: Mapped[int] = mapped_column(
+        ForeignKey("stations.id", ondelete="CASCADE")
+    )
+
+    # Directional, like segments. Northern to Central at Bank is not
+    # necessarily the same walk as Central to Northern — different platforms,
+    # different stairs, sometimes a different passage entirely.
+    from_line_id: Mapped[int] = mapped_column(ForeignKey("lines.id"))
+    to_line_id: Mapped[int] = mapped_column(ForeignKey("lines.id"))
+
+    seconds: Mapped[int] = mapped_column()
+
+    # Step-free for this particular change, which is not the same as either
+    # platform being step-free on its own — the route between them is what
+    # matters.
+    step_free: Mapped[bool] = mapped_column(default=False, server_default=false())
