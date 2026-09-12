@@ -1,0 +1,12 @@
+# Development happens on Windows; every container is Linux. Checking files out
+# with CRLF breaks shell scripts and Docker entrypoints in ways that are
+# tedious to diagnose, so the working copy uses LF everywhere.
+* text=auto eol=lf
+
+# Binary, never touched.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.db binary

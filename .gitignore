@@ -1,0 +1,44 @@
+# --- Secrets -----------------------------------------------------------------
+# .env holds real credentials and API keys. Only .env.example is tracked.
+.env
+.env.*
+!.env.example
+
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Node --------------------------------------------------------------------
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+npm-debug.log*
+yarn-error.log*
+
+# --- Data --------------------------------------------------------------------
+# The 2021 SQLite database is read by seed.py in Phase 2 but never committed.
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# --- Editors / OS ------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
