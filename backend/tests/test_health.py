@@ -37,7 +37,9 @@ async def test_health_reports_degraded_when_database_is_unreachable(
     }
 
 
-async def test_health_payload_has_exactly_the_documented_keys(client: AsyncClient) -> None:
+async def test_health_payload_has_exactly_the_documented_keys(
+    client: AsyncClient,
+) -> None:
     # The frontend renders these three fields by name. Adding a key is
     # harmless; removing or renaming one breaks it silently, so the contract
     # is pinned here rather than only in the schema.

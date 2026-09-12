@@ -20,7 +20,7 @@ WHAT CHANGED AND WHY
     Docker and the frontend both read the body.
 """
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
@@ -33,12 +33,17 @@ from ..schemas import HealthResponse
 
 router = APIRouter(tags=["health"])
 
+# Annotated rather than a `= Depends(...)` default. Both work, but a call in
+# a default argument is evaluated once at import and is a genuine bug in
+# ordinary Python — FastAPI is the exception, not the rule — so linters flag
+# it. Naming the dependency once here also means every endpoint that needs a
+# session spells it the same way.
+DbSession = Annotated[AsyncSession, Depends(get_db)]
+AppSettings = Annotated[Settings, Depends(get_settings)]
+
 
 @router.get("/health", response_model=HealthResponse)
-async def health(
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
-) -> HealthResponse:
+async def health(db: DbSession, settings: AppSettings) -> HealthResponse:
     """Report service and database status.
 
     Args:

@@ -26,7 +26,9 @@ import os
 # import time, which requires DATABASE_URL to exist. Nothing ever connects to
 # this address — every test overrides the session dependency — but a URL has
 # to parse.
-os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost:5432/test")
+os.environ.setdefault(
+    "DATABASE_URL", "postgresql+asyncpg://test:test@localhost:5432/test"
+)
 os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
 
 from collections.abc import AsyncIterator  # noqa: E402

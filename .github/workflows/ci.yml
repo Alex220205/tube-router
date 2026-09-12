@@ -1,0 +1,95 @@
+# Runs on every pull request and every push to main.
+#
+# Three independent jobs so a frontend failure does not hide a backend one,
+# and so the secret scan reports on its own rather than as a line in a lint
+# log.
+#
+# The engine job runs with no database and no services, which is the point:
+# if engine tests ever need one, something has gone wrong in engine/.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same branch. Pushing a fix should not queue
+# behind the run for the commit it fixes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python — lint, types, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # --frozen: fail if the lockfile disagrees with the manifests rather
+      # than resolving something new, so CI tests the versions that were
+      # committed.
+      - name: Install
+        run: uv sync --all-packages --frozen
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format
+        run: uv run ruff format --check .
+
+      # Scoped to engine/ by configuration in the root pyproject.toml.
+      - name: Type check
+        run: uv run mypy
+
+      - name: Engine tests
+        working-directory: engine
+        run: uv run pytest
+
+      - name: Backend tests
+        working-directory: backend
+        run: uv run pytest
+
+  frontend:
+    name: Frontend — lint, tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests
+        run: npm test
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history. Scanning only the latest commit would miss a key
+          # added and then deleted, which is exactly the case that matters:
+          # making a repository public exposes every commit ever made to it.
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

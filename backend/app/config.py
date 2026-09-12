@@ -73,7 +73,9 @@ class Settings(BaseSettings):
         Returns:
             One entry per origin. Empty entries from stray commas are dropped.
         """
-        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        return [
+            origin.strip() for origin in self.cors_origins.split(",") if origin.strip()
+        ]
 
 
 @lru_cache

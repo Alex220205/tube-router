@@ -9,10 +9,24 @@
 [tool.uv.workspace]
 members = ["backend", "engine"]
 
+# Repo-wide tooling, attached to the workspace rather than to either member,
+# because linting and type checking are not the backend's concern or the
+# engine's.
+[dependency-groups]
+dev = [
+    "ruff>=0.14",
+    "mypy>=1.11",
+]
+
 # --- ruff: lint + format, replacing black, flake8 and isort ------------------
 [tool.ruff]
 line-length = 88
 target-version = "py312"
+
+[tool.ruff.lint.isort]
+# Without this, isort files `app` and `tube_engine` under third-party and
+# sorts them in among httpx and sqlalchemy.
+known-first-party = ["app", "tube_engine"]
 
 [tool.ruff.lint]
 select = [
