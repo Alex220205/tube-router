@@ -43,18 +43,23 @@ from typing import Annotated
 from fastapi import Depends
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# backend/app/config.py -> backend/app -> backend -> repository root.
+# This file      -> core -> app -> backend -> repository root
+#                    [0]     [1]    [2]        [3]
 #
-# An absolute path, because env_file is otherwise resolved against the working
-# directory: running the API from backend/ looked for backend/.env, which does
-# not exist, so the root .env was silently never read. Compose hid that by
-# injecting the variables directly, so it would only have surfaced the first
-# time the API was run outside Docker.
+# Count the hops, and recount them if this file ever moves. It moved once
+# already — from backend/app/config.py to backend/app/core/config.py — and the
+# index was not updated, so _REPO_ROOT silently became backend/ and the root
+# .env stopped being read. Nothing failed for a week, because the test suite
+# sets the variables directly and Compose injects them, so the .env path is
+# only exercised by a human running a command by hand.
+#
+# An absolute path rather than a bare ".env", because env_file is otherwise
+# resolved against the working directory and the API runs from backend/.
 #
 # Inside the image this resolves to /app/.env, which is not there — .env is
-# gitignored and dockerignored. A missing env_file is not an error, and the
+# gitignored and never copied in. A missing env_file is not an error, and the
 # values arrive from the environment instead.
-_REPO_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
