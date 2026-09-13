@@ -143,6 +143,31 @@ def migrated_database() -> Iterator[str]:
 
 
 @pytest.fixture
+async def api(db: AsyncSession) -> AsyncIterator[AsyncClient]:
+    """An HTTP client whose endpoints share the test's own transaction.
+
+    get_db is overridden to hand back the *same* session the test is using,
+    so rows a test flushes are visible to the endpoint it then calls, and the
+    whole lot is rolled back afterwards. Without this the endpoint would open
+    its own session, see an empty database, and every test would have to
+    commit — leaving debris behind.
+
+    Yields:
+        A client bound to the app, driven in-process.
+    """
+
+    async def override_get_db() -> AsyncIterator[AsyncSession]:
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        yield client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
 async def db(migrated_database: str) -> AsyncIterator[AsyncSession]:
     """A session whose work is discarded when the test ends.
 
