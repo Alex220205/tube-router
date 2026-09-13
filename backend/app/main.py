@@ -31,8 +31,8 @@ WHAT'S NEW
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api.router import api_router
-from .config import get_settings
+from .core.config import get_settings
+from .routes.router import api_router
 
 settings = get_settings()
 

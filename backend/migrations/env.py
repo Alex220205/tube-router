@@ -37,7 +37,12 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from app.config import get_settings
+from app.core.config import get_settings
+
+# Imports the models package, not just Base — which is what guarantees every
+# model module has been executed and every table is registered on the
+# metadata. See app/models/__init__.py; a model whose module is never imported
+# is silently absent from autogenerate rather than an error.
 from app.models import Base
 
 config = context.config

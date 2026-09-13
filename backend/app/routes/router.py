@@ -13,6 +13,8 @@ NO 2021 EQUIVALENT
 WHAT'S NEW
     stations, routes, ws and status join here in Phases 3, 6 and 7. Each is
     one import and one include_router line, and main.py does not change.
+    One module per resource, matching schemas/ — so `routes/stations.py` and
+    `schemas/stations.py` are the pair you edit together.
 """
 
 from fastapi import APIRouter

@@ -27,9 +27,9 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..config import Settings, get_settings
-from ..database import get_db
-from ..schemas import HealthResponse
+from ..core.config import Settings, get_settings
+from ..core.database import get_db
+from ..schemas.health import HealthResponse
 
 router = APIRouter(tags=["health"])
 

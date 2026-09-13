@@ -43,7 +43,7 @@ TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 #
 # When TEST_DATABASE_URL is set it becomes DATABASE_URL, overriding whatever
 # .env said. That keeps the Phase 1 non-negotiable intact: Alembic reads its
-# URL from app.config, so pointing the application at the test database is
+# URL from app.core.config, so pointing the application at the test database is
 # what points the migrations at it too, and there is still exactly one source
 # of connection settings. The override has to be unconditional — .env sets
 # DATABASE_URL to the compose hostname `db`, which does not resolve from here.
@@ -69,7 +69,7 @@ from sqlalchemy.exc import OperationalError  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine  # noqa: E402
 from sqlalchemy.pool import NullPool  # noqa: E402
 
-from app.database import get_db  # noqa: E402
+from app.core.database import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 
 
