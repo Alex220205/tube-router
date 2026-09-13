@@ -20,34 +20,40 @@ WHAT CHANGED AND WHY
     Docker and the frontend both read the body.
 """
 
-from typing import Annotated, Literal
+from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..config import Settings, get_settings
-from ..database import get_db
-from ..schemas import HealthResponse
+from ..core.config import SettingsDep
+from ..core.database import SessionDep
+from ..schemas.health import HealthResponse
 
-router = APIRouter(tags=["health"])
+router = APIRouter(prefix="/health", tags=["health"])
 
-# Annotated rather than a `= Depends(...)` default. Both work, but a call in
-# a default argument is evaluated once at import and is a genuine bug in
-# ordinary Python — FastAPI is the exception, not the rule — so linters flag
-# it. Naming the dependency once here also means every endpoint that needs a
-# session spells it the same way.
-DbSession = Annotated[AsyncSession, Depends(get_db)]
-AppSettings = Annotated[Settings, Depends(get_settings)]
+# Documented on every route so the generated OpenAPI page lists what a client
+# can actually receive, rather than only the happy path. Shared because these
+# five mean the same thing everywhere in the API.
+responses = {
+    400: {"description": "Bad Request"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    500: {"description": "Internal Server Error"},
+    503: {"description": "Service Unavailable"},
+}
 
 
-@router.get("/health", response_model=HealthResponse)
-async def health(db: DbSession, settings: AppSettings) -> HealthResponse:
+@router.get(
+    "",
+    response_model=HealthResponse,
+    responses={**responses, 200: {"description": "OK"}},
+)
+async def get_health(session: SessionDep, settings: SettingsDep) -> HealthResponse:
     """Report service and database status.
 
     Args:
-        db: Session for the reachability check. Injected per request.
+        session: Session for the reachability check. Injected per request.
         settings: Application settings, for the version string.
 
     Returns:
@@ -57,7 +63,7 @@ async def health(db: DbSession, settings: AppSettings) -> HealthResponse:
     try:
         # Cheapest possible round trip. The point is to prove the connection
         # works end to end, not to read anything.
-        await db.execute(text("SELECT 1"))
+        await session.execute(text("SELECT 1"))
     except (SQLAlchemyError, OSError):
         # Narrow on purpose: a driver or socket failure means "unreachable",
         # which is the answer this endpoint exists to give. Anything else is

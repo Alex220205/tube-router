@@ -32,6 +32,9 @@ services:
       - "127.0.0.1:${POSTGRES_PORT}:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
+      # Runs once on an empty volume, creating the throwaway database the
+      # schema tests use. Read-only: the container has no business editing it.
+      - ./backend/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       # Services that depend on this one wait for the check to pass, not
       # merely for the container to start. Postgres accepts connections
