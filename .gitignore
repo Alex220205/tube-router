@@ -35,6 +35,29 @@ yarn-error.log*
 *.sqlite3
 data/
 
+# --- Reference material ------------------------------------------------------
+# The 2021 project, kept locally to audit against and to seed from in Phase 2.
+# Deliberately not part of this repository. It contains hardcoded API keys —
+# a TfL key and a Google Maps key — and committing it would copy them into
+# this history too, where they would be exposed the moment the repo goes
+# public. Read from, never tracked.
+old_source_code/
+
+# --- Test and build artefacts ------------------------------------------------
+# Nothing here is produced yet. Listed now so the first time a tool writes one
+# it is already ignored, rather than being noticed in a diff later.
+.coverage.*
+coverage.xml
+.eslintcache
+*.tsbuildinfo
+playwright-report/
+test-results/
+
+# --- Logs and local state ----------------------------------------------------
+*.log
+*.pid
+.claude/
+
 # --- Editors / OS ------------------------------------------------------------
 .vscode/
 .idea/

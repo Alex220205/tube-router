@@ -1,0 +1,29 @@
+[project]
+name = "tube-engine"
+version = "0.1.0"
+description = "Routing engine for the London Underground. Pure Python: no frameworks, no I/O."
+requires-python = ">=3.12"
+
+# Deliberately empty, and it stays that way.
+#
+# The engine imports nothing web-related and nothing database-related. This
+# line is the shortest possible statement of that rule, and it is the first
+# thing a reader checks. Enforced mechanically by engine/tests/test_imports.py
+# from Phase 6 onward.
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "mypy>=1.11",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tube_engine"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

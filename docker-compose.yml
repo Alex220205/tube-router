@@ -1,0 +1,127 @@
+# The whole stack, one command.
+#
+#   cp .env.example .env
+#   docker compose up
+#
+# Phase 0 runs the two data services. The API joins in the next commit and the
+# frontend in the one after, so every commit leaves a stack that starts.
+#
+# Images are pinned to exact versions. "latest" means a clean clone in six
+# months gets something different from what was tested, which defeats the
+# point of shipping a compose file at all.
+
+name: tube-router
+
+services:
+  # --- Postgres with PostGIS -------------------------------------------------
+  # PostGIS rather than plain Postgres because station coordinates are stored
+  # as geography(Point, 4326) from Phase 1, not as two float columns. That
+  # makes "stations near here" an indexed query rather than a full scan with
+  # haversine in Python.
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      # Bound to the loopback interface, not 0.0.0.0. A bare "5432:5432"
+      # publishes the database to every network the machine is on, and the
+      # development password is in .env.example for anyone to read. A GUI
+      # client on this machine still connects exactly as before.
+      - "127.0.0.1:${POSTGRES_PORT}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      # Services that depend on this one wait for the check to pass, not
+      # merely for the container to start. Postgres accepts connections
+      # several seconds after the process exists, and without this the API
+      # loses the race on a cold start and exits.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # --- Redis -----------------------------------------------------------------
+  # Nothing uses this until Phase 6. It runs from Phase 0 so that the stack
+  # described by this file is the stack the project ends up with.
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      # Loopback only, as with Postgres. Redis has no password at all.
+      - "127.0.0.1:${REDIS_PORT}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # --- API -------------------------------------------------------------------
+  # Built from the production Dockerfile with no source mount and no
+  # --reload, so what runs here is what would ship. Code changes need a
+  # rebuild; that is the trade, and it is the right one while the surface is
+  # this small.
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+    ports:
+      # Left on all interfaces, unlike db and redis: these two are the
+      # application, and reaching the demo from a phone on the same network is
+      # occasionally useful. The database being reachable never is.
+      - "${API_PORT}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # Deliberately passes on any 2xx, which means this container reports
+      # healthy even while /health says the database is unreachable — verified
+      # by stopping db and watching `compose ps` stay green.
+      #
+      # That is the intended behaviour: this check answers "is the API
+      # serving", and it is. Postgres reports on Postgres through its own
+      # healthcheck above. Making this one fail on a degraded database would
+      # have it lie about a service it does not own, and would block the
+      # frontend from starting — so the page that exists to display "database
+      # unreachable" would never load. See docs/DECISIONS.md.
+      #
+      # No curl or wget in python:3.12-slim, and adding one to a production
+      # image for the sake of a healthcheck is not worth it. Python is
+      # already here.
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8000/health')
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # --- Frontend --------------------------------------------------------------
+  # Built to static files and served by nginx. No Node in the running
+  # container and no dev server.
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # Build-time, not run-time. Vite bakes this into the bundle, so
+        # setting it as an `environment:` entry below would silently do
+        # nothing. It is the browser that resolves this address, which is why
+        # it is localhost and not the `api` service name.
+        VITE_API_URL: ${VITE_API_URL}
+    ports:
+      - "${FRONTEND_PORT}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  db_data:

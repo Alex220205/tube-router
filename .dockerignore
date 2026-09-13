@@ -1,0 +1,34 @@
+# Keep the build context small and keep host artefacts out of images. A host
+# .venv copied into a Linux image is broken and confusing; node_modules is
+# large and platform-specific.
+#
+# Patterns here are anchored to the context root, so `node_modules/` alone
+# would match only a top-level one and miss frontend/node_modules — which is
+# most of the context. Hence the ** prefixes.
+
+.git/
+.github/
+docs/
+
+**/.venv/
+**/venv/
+**/node_modules/
+**/dist/
+**/build/
+**/*.egg-info/
+
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.vite/
+
+.env
+.env.*
+!.env.example
+
+**/*.db
+**/*.sqlite3
+
+README.md
