@@ -1,0 +1,221 @@
+[
+ {
+  "$type": "Tfl.Api.Presentation.Entities.StopPoint, Tfl.Api.Presentation.Entities",
+  "naptanId": "940GZZLUBLR",
+  "modes": [
+   "tube"
+  ],
+  "stopType": "NaptanMetroStation",
+  "stationNaptan": "940GZZLUBLR",
+  "hubNaptanCode": "HUBBHO",
+  "id": "940GZZLUBLR",
+  "commonName": "Blackhorse Road Underground Station",
+  "lat": 51.586919,
+  "lon": -0.04115
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.StopPoint, Tfl.Api.Presentation.Entities",
+  "naptanId": "940GZZLUBXN",
+  "modes": [
+   "tube"
+  ],
+  "stopType": "NaptanMetroStation",
+  "stationNaptan": "940GZZLUBXN",
+  "hubNaptanCode": "HUBBRX",
+  "id": "940GZZLUBXN",
+  "commonName": "Brixton Underground Station",
+  "lat": 51.462618,
+  "lon": -0.114888
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.StopPoint, Tfl.Api.Presentation.Entities",
+  "naptanId": "940GZZLUEUS",
+  "modes": [
+   "tube"
+  ],
+  "stopType": "NaptanMetroStation",
+  "stationNaptan": "940GZZLUEUS",
+  "hubNaptanCode": "HUBEUS",
+  "id": "940GZZLUEUS",
+  "commonName": "Euston Underground Station",
+  "lat": 51.528186,
+  "lon": -0.134239
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.StopPoint, Tfl.Api.Presentation.Entities",
+  "naptanId": "940GZZLUFPK",
+  "modes": [
+   "tube"
+  ],
+  "stopType": "NaptanMetroStation",
+  "stationNaptan": "940GZZLUFPK",
+  "hubNaptanCode": "HUBFPK",
+  "id": "940GZZLUFPK",
+  "commonName": "Finsbury Park Underground Station",
+  "lat": 51.564158,
+  "lon": -0.106825
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.StopPoint, Tfl.Api.Presentation.Entities",
+  "naptanId": "940GZZLUGPK",
+  "modes": [
+   "tube"
+  ],
+  "stopType": "NaptanMetroStation",
+  "stationNaptan": "940GZZLUGPK",
+  "id": "940GZZLUGPK",
+  "commonName": "Green Park Underground Station",
+  "lat": 51.506947,
+  "lon": -0.142787
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.StopPoint, Tfl.Api.Presentation.Entities",
+  "naptanId": "940GZZLUHAI",
+  "modes": [
+   "tube"
+  ],
+  "stopType": "NaptanMetroStation",
+  "stationNaptan": "940GZZLUHAI",
+  "hubNaptanCode": "HUBHHY",
+  "id": "940GZZLUHAI",
+  "commonName": "Highbury & Islington Underground Station",
+  "lat": 51.54635,
+  "lon": -0.103324
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.StopPoint, Tfl.Api.Presentation.Entities",
+  "naptanId": "940GZZLUKSX",
+  "modes": [
+   "tube"
+  ],
+  "stopType": "NaptanMetroStation",
+  "stationNaptan": "940GZZLUKSX",
+  "hubNaptanCode": "HUBKGX",
+  "id": "940GZZLUKSX",
+  "commonName": "King's Cross St. Pancras Underground Station",
+  "lat": 51.530663,
+  "lon": -0.123194
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.StopPoint, Tfl.Api.Presentation.Entities",
+  "naptanId": "940GZZLUOXC",
+  "modes": [
+   "tube"
+  ],
+  "stopType": "NaptanMetroStation",
+  "stationNaptan": "940GZZLUOXC",
+  "id": "940GZZLUOXC",
+  "commonName": "Oxford Circus Underground Station",
+  "lat": 51.515224,
+  "lon": -0.141903
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.StopPoint, Tfl.Api.Presentation.Entities",
+  "naptanId": "940GZZLUPCO",
+  "modes": [
+   "tube"
+  ],
+  "stopType": "NaptanMetroStation",
+  "stationNaptan": "940GZZLUPCO",
+  "id": "940GZZLUPCO",
+  "commonName": "Pimlico Underground Station",
+  "lat": 51.489097,
+  "lon": -0.133761
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.StopPoint, Tfl.Api.Presentation.Entities",
+  "naptanId": "940GZZLUSKW",
+  "modes": [
+   "tube"
+  ],
+  "stopType": "NaptanMetroStation",
+  "stationNaptan": "940GZZLUSKW",
+  "id": "940GZZLUSKW",
+  "commonName": "Stockwell Underground Station",
+  "lat": 51.472184,
+  "lon": -0.122644
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.StopPoint, Tfl.Api.Presentation.Entities",
+  "naptanId": "940GZZLUSVS",
+  "modes": [
+   "tube"
+  ],
+  "stopType": "NaptanMetroStation",
+  "stationNaptan": "940GZZLUSVS",
+  "hubNaptanCode": "HUBSVS",
+  "id": "940GZZLUSVS",
+  "commonName": "Seven Sisters Underground Station",
+  "lat": 51.58333,
+  "lon": -0.072584
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.StopPoint, Tfl.Api.Presentation.Entities",
+  "naptanId": "940GZZLUTMH",
+  "modes": [
+   "tube"
+  ],
+  "stopType": "NaptanMetroStation",
+  "stationNaptan": "940GZZLUTMH",
+  "hubNaptanCode": "HUBTOM",
+  "id": "940GZZLUTMH",
+  "commonName": "Tottenham Hale Underground Station",
+  "lat": 51.588108,
+  "lon": -0.060241
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.StopPoint, Tfl.Api.Presentation.Entities",
+  "naptanId": "940GZZLUVIC",
+  "modes": [
+   "tube"
+  ],
+  "stopType": "NaptanMetroStation",
+  "stationNaptan": "940GZZLUVIC",
+  "hubNaptanCode": "HUBVIC",
+  "id": "940GZZLUVIC",
+  "commonName": "Victoria Underground Station",
+  "lat": 51.496359,
+  "lon": -0.143102
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.StopPoint, Tfl.Api.Presentation.Entities",
+  "naptanId": "940GZZLUVXL",
+  "modes": [
+   "tube"
+  ],
+  "stopType": "NaptanMetroStation",
+  "stationNaptan": "940GZZLUVXL",
+  "hubNaptanCode": "HUBVXH",
+  "id": "940GZZLUVXL",
+  "commonName": "Vauxhall Underground Station",
+  "lat": 51.485743,
+  "lon": -0.124204
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.StopPoint, Tfl.Api.Presentation.Entities",
+  "naptanId": "940GZZLUWRR",
+  "modes": [
+   "tube"
+  ],
+  "stopType": "NaptanMetroStation",
+  "stationNaptan": "940GZZLUWRR",
+  "id": "940GZZLUWRR",
+  "commonName": "Warren Street Underground Station",
+  "lat": 51.524951,
+  "lon": -0.138321
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.StopPoint, Tfl.Api.Presentation.Entities",
+  "naptanId": "940GZZLUWWL",
+  "modes": [
+   "tube"
+  ],
+  "stopType": "NaptanMetroStation",
+  "stationNaptan": "940GZZLUWWL",
+  "hubNaptanCode": "HUBWHC",
+  "id": "940GZZLUWWL",
+  "commonName": "Walthamstow Central Underground Station",
+  "lat": 51.582965,
+  "lon": -0.019885
+ }
+]

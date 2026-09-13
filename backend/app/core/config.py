@@ -43,18 +43,23 @@ from typing import Annotated
 from fastapi import Depends
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# backend/app/config.py -> backend/app -> backend -> repository root.
+# This file      -> core -> app -> backend -> repository root
+#                    [0]     [1]    [2]        [3]
 #
-# An absolute path, because env_file is otherwise resolved against the working
-# directory: running the API from backend/ looked for backend/.env, which does
-# not exist, so the root .env was silently never read. Compose hid that by
-# injecting the variables directly, so it would only have surfaced the first
-# time the API was run outside Docker.
+# Count the hops, and recount them if this file ever moves. It moved once
+# already — from backend/app/config.py to backend/app/core/config.py — and the
+# index was not updated, so _REPO_ROOT silently became backend/ and the root
+# .env stopped being read. Nothing failed for a week, because the test suite
+# sets the variables directly and Compose injects them, so the .env path is
+# only exercised by a human running a command by hand.
+#
+# An absolute path rather than a bare ".env", because env_file is otherwise
+# resolved against the working directory and the API runs from backend/.
 #
 # Inside the image this resolves to /app/.env, which is not there — .env is
-# gitignored and dockerignored. A missing env_file is not an error, and the
+# gitignored and never copied in. A missing env_file is not an error, and the
 # values arrive from the environment instead.
-_REPO_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
@@ -74,6 +79,27 @@ class Settings(BaseSettings):
 
     # Unused until Phase 6 (cached network) and Phase 7 (status pub/sub).
     redis_url: str = "redis://redis:6379/0"
+
+    # --- TfL --------------------------------------------------------------
+    tfl_base_url: str = "https://api.tfl.gov.uk"
+
+    # Optional. Every endpoint the seed uses answers without a key; a key
+    # raises the rate limit. Blank by default because it is a credential and
+    # the project has to work for someone who has not got one.
+    tfl_app_key: str = ""
+
+    # Generous, because the station data zip is a few hundred KB.
+    tfl_timeout_seconds: float = 30.0
+
+    # Total attempts, not retries after the first. TfL returns occasional 5xx
+    # under load and a single retry recovers almost all of them.
+    tfl_max_attempts: int = 3
+
+    # Smallest gap between requests. TfL allows 50 a minute without a key and
+    # a full seed makes about ninety, so without this the run gets a third of
+    # the way through and then starts getting 429s — which is how the value
+    # came to be here. With a key the limit is far higher and this can drop.
+    tfl_min_request_interval_seconds: float = 1.3
 
     # Comma-separated in the environment because env vars are strings.
     # Parsed by cors_origin_list below.

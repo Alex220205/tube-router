@@ -19,6 +19,10 @@ dependencies = [
     # PostGIS column types for SQLAlchemy — geography(Point, 4326) has no
     # equivalent in core SQLAlchemy. Phase 1.
     "geoalchemy2>=0.16",
+    # Async HTTP, for talking to TfL. Phase 2 seeds from it; Phase 7 polls it.
+    # Async specifically: `requests` would block the event loop for every
+    # connected user while waiting on someone else's server.
+    "httpx>=0.27",
     "tube-engine",
 ]
 
