@@ -39,10 +39,14 @@ class StationLine(Base):
     # Composite primary key. A station serves a line once or not at all, and
     # saying so here removes the need for a separate unique constraint.
     station_id: Mapped[int] = mapped_column(
-        ForeignKey("stations.id", ondelete="CASCADE"), primary_key=True
+        ForeignKey("stations.id", ondelete="CASCADE"),
+        primary_key=True,
+        comment="The station this line calls at.",
     )
     line_id: Mapped[int] = mapped_column(
-        ForeignKey("lines.id", ondelete="CASCADE"), primary_key=True
+        ForeignKey("lines.id", ondelete="CASCADE"),
+        primary_key=True,
+        comment="The line calling at that station.",
     )
 
     # Here rather than on Station, because step-free access is a property of
@@ -55,5 +59,7 @@ class StationLine(Base):
     # script tends to do. tests/models/test_schema.py inserts via raw SQL to
     # prove that path.
     step_free_to_platform: Mapped[bool] = mapped_column(
-        default=False, server_default=false()
+        default=False,
+        server_default=false(),
+        comment="Step-free street to platform. False when unknown.",
     )

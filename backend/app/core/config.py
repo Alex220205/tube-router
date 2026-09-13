@@ -38,7 +38,9 @@ WHAT'S NEW
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated
 
+from fastapi import Depends
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/app/config.py -> backend/app -> backend -> repository root.
@@ -104,3 +106,8 @@ def get_settings() -> Settings:
         The cached Settings instance for this process.
     """
     return Settings()  # type: ignore[call-arg]  # populated from the environment
+
+
+# Companion to SessionDep in database.py, so a route that needs settings
+# declares it the same way a route that needs a session does.
+SettingsDep = Annotated[Settings, Depends(get_settings)]

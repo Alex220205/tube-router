@@ -46,13 +46,21 @@ class StationComplex(Base):
 
     __tablename__ = "station_complexes"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(255))
+    id: Mapped[int] = mapped_column(
+        primary_key=True, comment="Surrogate identifier for this complex."
+    )
+    name: Mapped[str] = mapped_column(
+        String(255), comment="Name of the complex, e.g. 'Bank and Monument'."
+    )
 
     # TfL's hubNaptanCode — HUBBAN for Bank/Monument. Its presence is what
     # makes complexes derivable from the source rather than a hand-curated
     # list of special cases. Nullable because most stations belong to no hub.
-    tfl_hub_id: Mapped[str | None] = mapped_column(String(64), unique=True)
+    tfl_hub_id: Mapped[str | None] = mapped_column(
+        String(64),
+        unique=True,
+        comment="TfL hubNaptanCode, e.g. 'HUBBAN'. Null if no hub.",
+    )
 
 
 class Station(Base):
@@ -66,7 +74,9 @@ class Station(Base):
         Index("ix_stations_location", "location", postgresql_using="gist"),
     )
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(
+        primary_key=True, comment="Surrogate identifier for this station."
+    )
 
     # Not null, unlike the Phase 1 brief. That had it nullable because the
     # 2021 data has no external identifier at all. Seeding from TfL means
@@ -75,21 +85,30 @@ class Station(Base):
     #
     # Unique but not the primary key: TfL reissues and retires codes, and a
     # changed code would cascade through every foreign key in the schema.
-    naptan_id: Mapped[str] = mapped_column(String(64), unique=True)
+    naptan_id: Mapped[str] = mapped_column(
+        String(64),
+        unique=True,
+        comment="NaPTAN code from TfL. The external identity.",
+    )
 
     # TfL's commonName, verbatim, including the "Underground Station" suffix.
     # Trimming for display is the frontend's job; the database stores what the
     # authority says. See docs/DECISIONS.md on why there is no correction map.
-    name: Mapped[str] = mapped_column(String(255))
+    name: Mapped[str] = mapped_column(
+        String(255),
+        comment="TfL commonName verbatim. Never corrected here.",
+    )
 
     # geography, not two floats. As floats, "stations within 500 metres" is a
     # full table scan with haversine arithmetic in Python; as geography with
     # the GiST index above it is an indexed query. 4326 is WGS84, the system
     # GPS uses.
     location: Mapped[str] = mapped_column(
-        Geography(geometry_type="POINT", srid=4326, spatial_index=False)
+        Geography(geometry_type="POINT", srid=4326, spatial_index=False),
+        comment="WGS84 point (SRID 4326). GiST indexed.",
     )
 
     complex_id: Mapped[int | None] = mapped_column(
-        ForeignKey("station_complexes.id", ondelete="SET NULL")
+        ForeignKey("station_complexes.id", ondelete="SET NULL"),
+        comment="Interchange complex this station belongs to, if any.",
     )

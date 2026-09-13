@@ -68,17 +68,30 @@ class Line(Base):
 
     __tablename__ = "lines"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(
+        primary_key=True, comment="Surrogate identifier for this line."
+    )
 
     # TfL's own line identifier, which doubles as our stable code. The Phase 1
     # brief had a separate tfl_id column; now that TfL is the seed source the
     # two would hold identical values on every row, and two columns that are
     # always equal is a consistency bug waiting to happen.
-    code: Mapped[str] = mapped_column(String(64), unique=True)
+    code: Mapped[str] = mapped_column(
+        String(64),
+        unique=True,
+        comment="TfL line id, e.g. 'victoria'. Also our stable code.",
+    )
 
-    name: Mapped[str] = mapped_column(String(128))
-    mode: Mapped[TransportMode] = mapped_column(TRANSPORT_MODE)
+    name: Mapped[str] = mapped_column(
+        String(128), comment="Display name as TfL gives it, e.g. 'Victoria'."
+    )
+    mode: Mapped[TransportMode] = mapped_column(
+        TRANSPORT_MODE, comment="Kind of service: tube, overground, dlr or elizabeth."
+    )
 
     # Hex, for the frontend. Not nullable: a line the map cannot draw is not
     # useful.
-    colour: Mapped[str] = mapped_column(String(7))
+    colour: Mapped[str] = mapped_column(
+        String(7),
+        comment="Hex from TfL design standards. Not served by the API.",
+    )

@@ -1,10 +1,11 @@
 """
-The FastAPI application. Builds the app, applies middleware, mounts the API.
+FastAPI entry point: builds the application, applies CORS, wires the routers,
+and closes the connection pool on shutdown.
 
 WHY THIS EXISTS
     One place where the application is assembled, and deliberately nothing
-    else. No endpoints are defined here — they live in api/ and arrive
-    through api/router.py — so this file stays short as the project grows.
+    else. No endpoints are defined here — they live in routes/ — so this file
+    stays a readable index of what the service exposes.
 
 WHAT THE 2021 VERSION DID
     Where:  database[works].py, module level and the GUI class
@@ -22,24 +23,48 @@ WHAT CHANGED AND WHY
     server at all.
 
 WHAT'S NEW
-    CORS. The frontend runs on a different port from the API, which makes
-    every request cross-origin, so the browser sends a preflight OPTIONS
-    first and blocks the real request if the answer does not name its origin.
-    The allowed list comes from config rather than being a wildcard.
+    CORS, because the frontend runs on a different port and every request is
+    therefore cross-origin. The allowed list comes from config rather than
+    being a hardcoded literal, so a deployment elsewhere is a variable rather
+    than an edit.
+
+    A lifespan handler, so the connection pool is disposed on shutdown
+    instead of the process exiting with sockets still open to Postgres.
+    Note what it deliberately does NOT do: create tables. Schema changes
+    belong to Alembic, where they are reviewable, ordered and reversible.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .core.config import get_settings
-from .routes.router import api_router
+from .core.database import dispose_engine
+from .routes.health import router as health_route
 
 settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Start-up and shut-down work, either side of the yield.
+
+    Nothing happens on the way in. On the way out the connection pool is
+    closed, which is the part that matters — an unclean exit leaves
+    connections lingering on the Postgres side until it times them out.
+    """
+    yield
+    await dispose_engine()
+
 
 app = FastAPI(
     title="Tube Router API",
     version=settings.version,
     summary="London Underground journey planning.",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -50,4 +75,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(api_router)
+# One line per resource. Explicit rather than routed through an aggregator,
+# so this file is the list of what the API serves — adding an endpoint module
+# means adding it here, which is a visible change rather than a silent one.
+#
+# stations, lines and network join in Phase 3, route in Phase 6, status and
+# the status websocket in Phase 7.
+app.include_router(health_route)
+
+
+if __name__ == "__main__":
+    # For running the API directly during development:
+    #     cd backend && uv run python -m app.main
+    # The container does not use this path — its CMD invokes uvicorn itself,
+    # so host and port come from the Dockerfile rather than from here.
+    uvicorn.run(app, host="127.0.0.1", port=8000)

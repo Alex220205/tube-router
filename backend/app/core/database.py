@@ -38,7 +38,9 @@ WHAT'S NEW
 """
 
 from collections.abc import AsyncIterator
+from typing import Annotated
 
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from .config import get_settings
@@ -50,11 +52,20 @@ engine = create_async_engine(
     # Small on purpose. Postgres becomes unhappy well before the number of
     # concurrent requests would suggest, and sessions borrow a connection
     # only while they are actually running SQL.
+    #
+    # pool_size:     connections kept open permanently.
+    # max_overflow:  extra connections allowed above pool_size before a
+    #                request has to wait.
+    # pool_timeout:  seconds to wait for one before raising, rather than
+    #                hanging indefinitely under load.
+    # pool_pre_ping: issues a cheap check before handing a connection out, so
+    #                a connection the database has since dropped is recycled
+    #                instead of failing the request. This is what let the API
+    #                recover on its own when Postgres was stopped and started
+    #                underneath it.
     pool_size=5,
     max_overflow=10,
-    # Checks a pooled connection is alive before handing it out. Costs a
-    # round trip; avoids the stale-connection error after the database
-    # restarts, which is routine during development.
+    pool_timeout=30,
     pool_pre_ping=True,
 )
 
@@ -72,3 +83,22 @@ async def get_db() -> AsyncIterator[AsyncSession]:
     """
     async with SessionLocal() as session:
         yield session
+
+
+# Declared here rather than in each route module, so every endpoint that needs
+# a session spells it the same way and there is one place to change if the
+# dependency ever does.
+#
+# Annotated rather than a `= Depends(...)` default: a call in a default
+# argument is evaluated once at import and is a genuine bug in ordinary
+# Python — FastAPI is the exception, not the rule — so linters flag it.
+SessionDep = Annotated[AsyncSession, Depends(get_db)]
+
+
+async def dispose_engine() -> None:
+    """Close every pooled connection. Called on application shutdown.
+
+    Without this the process can exit holding open sockets to Postgres, which
+    shows up as connections lingering on the server side after a restart.
+    """
+    await engine.dispose()

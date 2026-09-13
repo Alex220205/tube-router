@@ -55,8 +55,13 @@ class Segment(Base):
         Index("ix_segments_line_id", "line_id"),
     )
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    line_id: Mapped[int] = mapped_column(ForeignKey("lines.id", ondelete="CASCADE"))
+    id: Mapped[int] = mapped_column(
+        primary_key=True, comment="Surrogate identifier for this segment."
+    )
+    line_id: Mapped[int] = mapped_column(
+        ForeignKey("lines.id", ondelete="CASCADE"),
+        comment="The line this hop is on. Part of its identity.",
+    )
 
     # Directional: one row per direction, so a normal link between adjacent
     # stations is two rows. The network genuinely is not symmetric — the
@@ -64,10 +69,14 @@ class Segment(Base):
     # storing it undirected pushes those exceptions into application logic
     # instead of data. The audit confirmed the 2021 data was undirected: 356
     # distinct pairs, none with a reverse row.
-    origin_station_id: Mapped[int] = mapped_column(ForeignKey("stations.id"))
-    destination_station_id: Mapped[int] = mapped_column(ForeignKey("stations.id"))
+    origin_station_id: Mapped[int] = mapped_column(
+        ForeignKey("stations.id"), comment="Station this hop departs from."
+    )
+    destination_station_id: Mapped[int] = mapped_column(
+        ForeignKey("stations.id"), comment="Station this hop arrives at."
+    )
 
     # Seconds, not minutes. The old column was minutes, which put 81% of the
     # network on either 1 or 2 and left "fastest route" almost nothing to
     # discriminate on.
-    seconds: Mapped[int] = mapped_column()
+    seconds: Mapped[int] = mapped_column(comment="Ride time in seconds. Must be > 0.")
