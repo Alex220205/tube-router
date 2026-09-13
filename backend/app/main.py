@@ -44,6 +44,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from .core.config import get_settings
 from .core.database import dispose_engine
 from .routes.health import router as health_route
+from .routes.lines import router as lines_route
+from .routes.network import router as network_route
 from .routes.stations import router as stations_route
 
 settings = get_settings()
@@ -80,10 +82,11 @@ app.add_middleware(
 # so this file is the list of what the API serves — adding an endpoint module
 # means adding it here, which is a visible change rather than a silent one.
 #
-# lines and network join next, route in Phase 6, status and the status
-# websocket in Phase 7.
+# route joins in Phase 6; status and the status websocket in Phase 7.
 app.include_router(health_route)
 app.include_router(stations_route)
+app.include_router(lines_route)
+app.include_router(network_route)
 
 
 if __name__ == "__main__":
