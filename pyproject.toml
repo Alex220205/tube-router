@@ -9,6 +9,22 @@
 [tool.uv.workspace]
 members = ["backend", "engine"]
 
+[tool.uv]
+# Copy files out of the cache instead of hardlinking them.
+#
+# uv hardlinks by default, which is faster and uses less disk. It fails
+# outright when the working tree sits inside a cloud-synced folder: OneDrive's
+# filter driver rejects the operation with
+#
+#     os error 396: The cloud operation cannot be performed on a file with
+#     incompatible hardlinks
+#
+# and the build stops. Copying is marginally slower and always works. The cost
+# on Linux CI is a few seconds; the cost of the default is that the project
+# does not build at all on a machine whose checkout is in OneDrive, Dropbox or
+# iCloud Drive.
+link-mode = "copy"
+
 # Repo-wide tooling, attached to the workspace rather than to either member,
 # because linting and type checking are not the backend's concern or the
 # engine's.
