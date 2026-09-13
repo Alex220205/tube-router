@@ -31,14 +31,21 @@ const TIMEOUT_MS = 5000
  * GET a JSON endpoint.
  *
  * @param {string} path Path beginning with a slash, e.g. "/health".
+ * @param {AbortSignal} [signal] Cancels the request if the caller loses
+ *   interest — a search superseded by more typing, for example.
  * @returns {Promise<object>} The parsed response body.
  * @throws {Error} If the request times out, fails, or returns a non-2xx status.
  */
-async function getJson(path) {
+async function getJson(path, signal) {
   let response
   try {
     response = await fetch(`${BASE_URL}${path}`, {
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      // Two reasons to give up: the server never answered, or the user has
+      // typed past this request and its answer is already stale. `any`
+      // combines them so whichever fires first wins.
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(TIMEOUT_MS)])
+        : AbortSignal.timeout(TIMEOUT_MS),
     })
   } catch (cause) {
     // A timeout arrives as a DOMException named TimeoutError, whose own
@@ -69,4 +76,28 @@ async function getJson(path) {
  */
 export function fetchHealth() {
   return getJson('/health')
+}
+
+/**
+ * Search stations by name.
+ *
+ * @param {string} query Substring of the station name. Blank returns all.
+ * @param {AbortSignal} [signal] Cancels a request the user has typed past.
+ * @returns {Promise<Array<{id: number, naptan_id: string, name: string,
+ *   lat: number, lon: number}>>}
+ */
+export function fetchStations(query, signal) {
+  const params = new URLSearchParams()
+  if (query) params.set('q', query)
+  return getJson(`/stations?${params}`, signal)
+}
+
+/**
+ * Fetch every line, with its colour.
+ *
+ * @returns {Promise<Array<{id: number, code: string, name: string,
+ *   colour: string, mode: string}>>}
+ */
+export function fetchLines() {
+  return getJson('/lines')
 }
