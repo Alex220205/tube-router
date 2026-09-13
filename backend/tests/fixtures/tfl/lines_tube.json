@@ -1,0 +1,68 @@
+[
+ {
+  "$type": "Tfl.Api.Presentation.Entities.Line, Tfl.Api.Presentation.Entities",
+  "id": "bakerloo",
+  "name": "Bakerloo",
+  "modeName": "tube"
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.Line, Tfl.Api.Presentation.Entities",
+  "id": "central",
+  "name": "Central",
+  "modeName": "tube"
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.Line, Tfl.Api.Presentation.Entities",
+  "id": "circle",
+  "name": "Circle",
+  "modeName": "tube"
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.Line, Tfl.Api.Presentation.Entities",
+  "id": "district",
+  "name": "District",
+  "modeName": "tube"
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.Line, Tfl.Api.Presentation.Entities",
+  "id": "hammersmith-city",
+  "name": "Hammersmith & City",
+  "modeName": "tube"
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.Line, Tfl.Api.Presentation.Entities",
+  "id": "jubilee",
+  "name": "Jubilee",
+  "modeName": "tube"
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.Line, Tfl.Api.Presentation.Entities",
+  "id": "metropolitan",
+  "name": "Metropolitan",
+  "modeName": "tube"
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.Line, Tfl.Api.Presentation.Entities",
+  "id": "northern",
+  "name": "Northern",
+  "modeName": "tube"
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.Line, Tfl.Api.Presentation.Entities",
+  "id": "piccadilly",
+  "name": "Piccadilly",
+  "modeName": "tube"
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.Line, Tfl.Api.Presentation.Entities",
+  "id": "victoria",
+  "name": "Victoria",
+  "modeName": "tube"
+ },
+ {
+  "$type": "Tfl.Api.Presentation.Entities.Line, Tfl.Api.Presentation.Entities",
+  "id": "waterloo-city",
+  "name": "Waterloo & City",
+  "modeName": "tube"
+ }
+]

@@ -75,6 +75,21 @@ class Settings(BaseSettings):
     # Unused until Phase 6 (cached network) and Phase 7 (status pub/sub).
     redis_url: str = "redis://redis:6379/0"
 
+    # --- TfL --------------------------------------------------------------
+    tfl_base_url: str = "https://api.tfl.gov.uk"
+
+    # Optional. Every endpoint the seed uses answers without a key; a key
+    # raises the rate limit. Blank by default because it is a credential and
+    # the project has to work for someone who has not got one.
+    tfl_app_key: str = ""
+
+    # Generous, because the station data zip is a few hundred KB.
+    tfl_timeout_seconds: float = 30.0
+
+    # Total attempts, not retries after the first. TfL returns occasional 5xx
+    # under load and a single retry recovers almost all of them.
+    tfl_max_attempts: int = 3
+
     # Comma-separated in the environment because env vars are strings.
     # Parsed by cors_origin_list below.
     cors_origins: str = "http://localhost:5173"
