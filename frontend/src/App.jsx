@@ -13,13 +13,14 @@
  *     disconnected without anyone noticing.
  *
  * WHAT'S NEW
- *     The map, search, objective toggle and route panel replace this in
- *     Phase 8. Until then this is the whole interface, and it is deliberately
- *     unstyled beyond being legible.
+ *     The map, objective toggle and route panel arrive in Phase 8. The
+ *     search box below is Phase 3, and is the first part of this project a
+ *     person can actually use.
  */
 
 import { useEffect, useState } from 'react'
 import { fetchHealth } from './api'
+import StationSearch from './components/StationSearch'
 
 // Three distinct outcomes, and the difference between the last two matters:
 // "degraded" means the API answered and told us Postgres is down;
@@ -97,6 +98,8 @@ export default function App() {
           </dl>
         )}
       </section>
+
+      <StationSearch />
     </main>
   )
 }
