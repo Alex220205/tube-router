@@ -90,6 +90,12 @@ class Settings(BaseSettings):
     # under load and a single retry recovers almost all of them.
     tfl_max_attempts: int = 3
 
+    # Smallest gap between requests. TfL allows 50 a minute without a key and
+    # a full seed makes about ninety, so without this the run gets a third of
+    # the way through and then starts getting 429s — which is how the value
+    # came to be here. With a key the limit is far higher and this can drop.
+    tfl_min_request_interval_seconds: float = 1.3
+
     # Comma-separated in the environment because env vars are strings.
     # Parsed by cors_origin_list below.
     cors_origins: str = "http://localhost:5173"

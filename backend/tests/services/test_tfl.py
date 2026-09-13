@@ -20,11 +20,12 @@ import io
 import json
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 import httpx
 import pytest
 
-from app.services.tfl import TfLClient, TfLError
+from app.services.tfl import RATE_LIMIT_PAUSE, TfLClient, TfLError
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "tfl"
 
@@ -160,6 +161,105 @@ async def test_a_client_error_is_not_retried() -> None:
             await tfl.route_sequence("not-a-line", "inbound")
 
     assert attempts["n"] == 1
+
+
+async def test_rate_limiting_is_retried_even_though_it_is_a_4xx() -> None:
+    # The exception to "4xx will not change on a retry". A 429 does not mean
+    # the request was wrong, it means it was too soon — waiting is the entire
+    # fix. This was found by running the real seed: TfL allows 50 requests a
+    # minute without a key and a full run makes about ninety, so it died a
+    # third of the way through on hammersmith-city.
+    attempts = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            return httpx.Response(429, headers={"Retry-After": "0"})
+        return httpx.Response(200, json=[{"id": "victoria"}])
+
+    async with client_returning(handler) as tfl:
+        lines = await tfl.tube_lines()
+
+    assert attempts["n"] == 2
+    assert lines == [{"id": "victoria"}]
+
+
+async def test_retry_after_is_honoured_when_tfl_sends_one() -> None:
+    # Sleeping for our own backoff when the server has said how long to wait
+    # means either waiting too long or being rate limited again immediately.
+    slept: list[float] = []
+
+    async def record(seconds: float) -> None:
+        slept.append(seconds)
+
+    attempts = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            return httpx.Response(429, headers={"Retry-After": "7"})
+        return httpx.Response(200, json=[])
+
+    with mock.patch("app.services.tfl.asyncio.sleep", record):
+        async with client_returning(handler) as tfl:
+            await tfl.tube_lines()
+
+    assert slept == [7.0]
+
+
+async def test_a_malformed_retry_after_falls_back_to_a_sane_pause() -> None:
+    slept: list[float] = []
+
+    async def record(seconds: float) -> None:
+        slept.append(seconds)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, headers={"Retry-After": "in a bit"})
+
+    with mock.patch("app.services.tfl.asyncio.sleep", record):
+        async with client_returning(handler, max_attempts=2) as tfl:
+            with pytest.raises(TfLError, match="failed after 2 attempts"):
+                await tfl.tube_lines()
+
+    assert slept == [RATE_LIMIT_PAUSE]
+
+
+async def test_requests_are_spaced_when_an_interval_is_set() -> None:
+    # The throttle is what stops the 429 happening at all. Without it the
+    # retry above is the only thing between the seed and a failed run.
+    slept: list[float] = []
+
+    async def record(seconds: float) -> None:
+        slept.append(seconds)
+
+    async with TfLClient(
+        base_url="https://tfl.test",
+        min_request_interval_seconds=1.3,
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=[])),
+    ) as tfl:
+        with mock.patch("app.services.tfl.asyncio.sleep", record):
+            await tfl.tube_lines()
+            await tfl.tube_lines()
+
+    # The first request goes immediately; the second waits out the interval.
+    assert len(slept) == 1
+    assert 0 < slept[0] <= 1.3
+
+
+async def test_no_throttling_by_default() -> None:
+    # Tests and any future caller with a key should not pay for a limit they
+    # are not subject to.
+    slept: list[float] = []
+
+    async def record(seconds: float) -> None:
+        slept.append(seconds)
+
+    async with client_returning(lambda r: httpx.Response(200, json=[])) as tfl:
+        with mock.patch("app.services.tfl.asyncio.sleep", record):
+            await tfl.tube_lines()
+            await tfl.tube_lines()
+
+    assert slept == []
 
 
 async def test_a_timeout_is_retried_then_raises() -> None:
