@@ -25,18 +25,36 @@ CONSTRAINT
 from fixtures import (
     change_is_worth_avoiding,
     diamond,
+    equally_fast_one_needs_a_change,
+    fastest_differs_from_fewest_changes,
     one_way_pair,
     single_station,
+    step_free_is_impossible,
+    step_free_is_slower,
     straight_line,
     two_islands,
     two_lines,
 )
 
-from tube_engine import NoRoute, Route, RouteQuery, find_route
+from tube_engine import Network, NoRoute, Objective, Route, RouteQuery, find_route
 
 
-def route_between(network: object, origin: str, destination: str) -> Route | NoRoute:
-    return find_route(network, RouteQuery(origin=origin, destination=destination))  # type: ignore[arg-type]
+def route_between(
+    network: Network,
+    origin: str,
+    destination: str,
+    objective: Objective = Objective.FASTEST,
+    avoid: frozenset[str] = frozenset(),
+) -> Route | NoRoute:
+    return find_route(
+        network,
+        RouteQuery(
+            origin=origin,
+            destination=destination,
+            objective=objective,
+            avoid_lines=avoid,
+        ),
+    )
 
 
 def test_a_straight_line_is_one_leg_with_no_changes() -> None:
@@ -154,6 +172,140 @@ def test_a_single_station_network_does_not_crash() -> None:
 
     assert route_between(network, "A", "A") == Route()
     assert route_between(network, "A", "B") == NoRoute("unknown_destination")
+
+
+def test_fastest_and_fewest_changes_return_different_routes() -> None:
+    """The test that proves FEWEST_CHANGES exists.
+
+    Quick route: 30 + 20 + 30 + 20 + 30 = 130 seconds across three lines.
+    Direct route: 300 seconds on one.
+
+    If both objectives agreed here, FEWEST_CHANGES would be FASTEST under
+    another name and every other test of it would still pass.
+    """
+    network = fastest_differs_from_fewest_changes()
+
+    quickest = route_between(network, "A", "D")
+    simplest = route_between(network, "A", "D", Objective.FEWEST_CHANGES)
+
+    assert isinstance(quickest, Route)
+    assert isinstance(simplest, Route)
+
+    assert (quickest.total_seconds, quickest.changes) == (130, 2)
+    assert (simplest.total_seconds, simplest.changes) == (300, 0)
+    assert [leg.line for leg in quickest.legs] == ["red", "blue", "yellow"]
+    assert [leg.line for leg in simplest.legs] == ["green"]
+
+
+def test_fastest_breaks_ties_on_fewest_changes() -> None:
+    """The mirror of the test below, and it came from the real network.
+
+    Snaresbrook to Barons Court returned 48 minutes with three changes while a
+    48-minute route with one change existed. Both are optimal by time, so the
+    search was returning whichever it reached first — an answer decided by
+    heap ordering rather than by the question.
+    """
+    result = route_between(equally_fast_one_needs_a_change(), "A", "D")
+
+    assert isinstance(result, Route)
+    assert result.total_seconds == 200
+    assert result.changes == 0
+    assert [leg.line for leg in result.legs] == ["red"]
+
+
+def test_fewest_changes_breaks_ties_on_time() -> None:
+    # Both routes through the diamond stay on `red`, so both have zero
+    # changes. Without a tie-break the answer would depend on heap ordering
+    # and could differ between runs; the second element of the cost tuple is
+    # what makes it 120 every time.
+    result = route_between(diamond(), "A", "D", Objective.FEWEST_CHANGES)
+
+    assert isinstance(result, Route)
+    assert result.total_seconds == 120
+    assert result.legs[0].stations == ("A", "B", "D")
+
+
+def test_fewest_changes_still_reports_the_real_journey_time() -> None:
+    # The priority key is (changes, seconds), and total_seconds is rebuilt
+    # from the edges rather than read off that key. If the two were ever
+    # conflated a fewest-changes route would report its change count as a
+    # duration, which is the 2021 habit of letting an algorithm's internals
+    # escape into the answer.
+    result = route_between(
+        fastest_differs_from_fewest_changes(), "A", "D", Objective.FEWEST_CHANGES
+    )
+
+    assert isinstance(result, Route)
+    assert result.total_seconds == 300
+    assert sum(leg.seconds for leg in result.legs) == 300
+
+
+def test_changes_matches_the_leg_count_under_every_objective() -> None:
+    # Derived rather than counted, so the two cannot drift apart. Asserted for
+    # all three because each takes a different path through _build_route.
+    network = fastest_differs_from_fewest_changes()
+
+    for objective in Objective:
+        result = route_between(network, "A", "D", objective)
+
+        assert isinstance(result, Route), objective
+        assert result.changes == len(result.legs) - 1, objective
+
+
+def test_the_step_free_route_is_slower_and_both_are_real() -> None:
+    # 120 seconds via B crosses a step; 300 via C does not. Both are genuine
+    # routes, which is the point — a step-free search that quietly returned
+    # the fastest one would look correct until somebody relied on it.
+    network = step_free_is_slower()
+
+    quickest = route_between(network, "A", "D")
+    accessible = route_between(network, "A", "D", Objective.STEP_FREE)
+
+    assert isinstance(quickest, Route)
+    assert isinstance(accessible, Route)
+
+    assert quickest.total_seconds == 120
+    assert quickest.step_free is False
+    assert accessible.total_seconds == 300
+    assert accessible.step_free is True
+    assert accessible.legs[0].stations == ("A", "C", "D")
+
+
+def test_step_free_that_cuts_the_destination_off_is_disconnected() -> None:
+    # Every way into D crosses a step. D still exists, so the honest answer is
+    # "disconnected" — reporting "unknown_destination" would have the engine
+    # denying a station it can see, and that is why step_free_only() keeps
+    # every station rather than filtering them too.
+    result = route_between(step_free_is_impossible(), "A", "D", Objective.STEP_FREE)
+
+    assert result == NoRoute("disconnected")
+    assert isinstance(route_between(step_free_is_impossible(), "A", "D"), Route)
+
+
+def test_avoiding_a_line_forces_the_other_route() -> None:
+    # Without the blue line the three-line route is broken at B, so the only
+    # way to D is the slow direct one. Phase 7 uses this to route around a
+    # suspended line.
+    network = fastest_differs_from_fewest_changes()
+
+    unrestricted = route_between(network, "A", "D")
+    detour = route_between(network, "A", "D", avoid=frozenset({"blue"}))
+
+    assert isinstance(unrestricted, Route)
+    assert isinstance(detour, Route)
+    assert unrestricted.total_seconds == 130
+    assert detour.total_seconds == 300
+    assert [leg.line for leg in detour.legs] == ["green"]
+
+
+def test_avoiding_every_line_is_a_no_route_rather_than_a_crash() -> None:
+    network = fastest_differs_from_fewest_changes()
+
+    result = route_between(
+        network, "A", "D", avoid=frozenset({"red", "blue", "yellow", "green"})
+    )
+
+    assert result == NoRoute("disconnected")
 
 
 def test_a_route_is_step_free_only_if_every_part_of_it_is() -> None:

@@ -256,8 +256,16 @@ def step_free_by_station_line(
     not, on the same line.
 
     A station counts as step-free for a line if *any* of its platforms on
-    that line is a designated level access point. One accessible platform is
-    what makes the journey possible.
+    that line is accessible. One accessible platform is what makes the
+    journey possible.
+
+    Two columns count, not one. DesignatedLevelAccessPoint marks a permanent
+    level boarding point; LevelAccessByManualRamp marks one where staff
+    deploy a ramp. TfL's own journey planner treats both as step-free, and
+    they are nearly disjoint in the data — reading only the first drops
+    roughly half the accessible platforms in the network and leaves the
+    Central and Bakerloo lines with no step-free stations at all, which is
+    not true of the real railway.
 
     Args:
         platform_services: Rows from PlatformServices.csv.
@@ -272,7 +280,9 @@ def step_free_by_station_line(
         if not station or not line:
             continue
         key = (station, line)
-        accessible = parse_bool(row.get("DesignatedLevelAccessPoint"))
+        accessible = parse_bool(row.get("DesignatedLevelAccessPoint")) or parse_bool(
+            row.get("LevelAccessByManualRamp")
+        )
         result[key] = result.get(key, False) or accessible
     return result
 
@@ -508,11 +518,31 @@ def interchanges_from_station_lines(
                         from_line_code=source.line_code,
                         to_line_code=target.line_code,
                         seconds=seconds,
-                        # A measured step-free distance existing for this
-                        # pair is TfL saying the change can be made
-                        # step-free. Absence is not evidence either way, so
-                        # it defaults to False.
-                        step_free=metres is not None,
+                        # Two sources, and the order matters. A measured
+                        # distance in StepFreeIntechangeInfo.csv is TfL
+                        # stating the change is step-free, and it is
+                        # authoritative where it exists — but it covers only
+                        # a few hundred pairs network-wide.
+                        #
+                        # Otherwise it is inferred: both platforms being
+                        # step-free means the change can normally be made via
+                        # the lifts, which is the standard assumption in
+                        # accessible journey planning. It is an inference
+                        # rather than a fact, and it can be wrong where two
+                        # accessible platforms are joined only by stairs.
+                        #
+                        # Requiring the measurement instead is the safer
+                        # reading and was the original rule. It marked 6 of
+                        # 312 changes step-free, which left the step-free
+                        # network in 40-odd disconnected fragments and made
+                        # the objective answer "no route" for essentially
+                        # every real journey. A feature that always refuses
+                        # is not a cautious feature, it is an absent one.
+                        step_free=metres is not None
+                        or (
+                            source.step_free_to_platform
+                            and target.step_free_to_platform
+                        ),
                     )
                 )
     return rows

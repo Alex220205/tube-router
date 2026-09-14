@@ -29,8 +29,13 @@ WHAT CHANGED AND WHY
     scanning — which makes the comment at line 530 true for the first time.
 
     Nodes are (station, line) pairs, so a change is an edge with a cost. That
-    is what fixes (3), and it is what Phase 5 builds fewest-changes on without
-    rewriting anything here.
+    is what fixes (3), and Phase 5 proved the claim: fewest-changes arrived by
+    making the priority key a tuple, with the traversal untouched.
+
+    All three objectives share one search. FEWEST_CHANGES swaps the cost for
+    (changes, seconds); STEP_FREE is not an algorithm at all, just this search
+    over Network.step_free_only(). Three copies of Dijkstra would be three
+    places to fix the same bug separately.
 
     Nothing is mutated except this function's own locals. The Network is
     read-only throughout, which fixes (2) by construction.
@@ -48,6 +53,8 @@ CONSTRAINT
 """
 
 import heapq
+from collections.abc import Callable
+from dataclasses import dataclass
 
 from .network import Network
 from .query import Objective, RouteQuery
@@ -67,6 +74,71 @@ Node = tuple[StationId, LineId]
 # How a node was reached: the node before it, and whether the step was a ride
 # or a change. The flag is what lets legs be split without re-deriving it.
 Arrival = tuple[Node, bool]
+
+# What the search minimises. A tuple rather than an int so that one traversal
+# serves every objective: heapq compares element by element, so (1, 900) beats
+# (2, 400) and (1, 400) beats (1, 900). That ordering is the entire
+# implementation of both "fewest changes, ties broken on time" and its mirror.
+#
+# Every objective carries a tie-break in the second element, so no answer is
+# ever chosen by heap order. Two routes that are equal on the thing you asked
+# for are separated by the thing you did not, rather than by which one the
+# search happened to reach first.
+Cost = tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class _CostModel:
+    """How an objective measures a journey.
+
+    Attributes:
+        start: The cost of standing at the origin, and the width of every
+            cost tuple in the search. Tuples are only comparable against
+            others of the same shape, so this fixes both at once.
+        advance: Cost so far, the seconds this step takes, and whether it was
+            a change, giving the cost after it.
+    """
+
+    start: Cost
+    advance: Callable[[Cost, int, bool], Cost]
+
+
+def _by_time(cost: Cost, seconds: int, is_change: bool) -> Cost:
+    """Minimise journey time, then changes.
+
+    The second element is a tie-break, not a preference: it only ever decides
+    between routes of identical duration. Without it the real network hands
+    back things like Snaresbrook to Barons Court in 48 minutes with three
+    changes, when a 48-minute route with one change exists — both optimal by
+    time, and the search returning whichever it reached first.
+
+    That is not merely worse to read. It makes the answer depend on heap
+    ordering rather than on the question, so the same query could change its
+    mind after an unrelated edit to the data.
+    """
+    return (cost[0] + seconds, cost[1] + int(is_change))
+
+
+def _by_changes(cost: Cost, seconds: int, is_change: bool) -> Cost:
+    """Minimise changes first, then time.
+
+    Both components only ever increase, which is what keeps this valid
+    Dijkstra: the algorithm needs a cost that never decreases as a path grows,
+    or the first pop of a node stops being its true optimum. A component that
+    could decrease would break the search silently, returning plausible wrong
+    routes rather than raising.
+    """
+    return (cost[0] + int(is_change), cost[1] + seconds)
+
+
+# STEP_FREE is deliberately the same model as FASTEST. It is not a third
+# algorithm — it is this search run against Network.step_free_only(), which is
+# why adding it cost a dictionary entry rather than a function.
+_COST_MODELS: dict[Objective, _CostModel] = {
+    Objective.FASTEST: _CostModel(start=(0, 0), advance=_by_time),
+    Objective.STEP_FREE: _CostModel(start=(0, 0), advance=_by_time),
+    Objective.FEWEST_CHANGES: _CostModel(start=(0, 0), advance=_by_changes),
+}
 
 
 def find_route(network: Network, query: RouteQuery) -> Route | NoRoute:
@@ -92,28 +164,46 @@ def find_route(network: Network, query: RouteQuery) -> Route | NoRoute:
     if query.origin == query.destination:
         return Route()
 
-    if query.objective is not Objective.FASTEST:  # pragma: no cover
-        # Unreachable while Objective has one member. Kept so that adding
-        # FEWEST_CHANGES in Phase 5 fails loudly here rather than silently
-        # returning the fastest route under a different name.
-        raise NotImplementedError(f"objective {query.objective} arrives in Phase 5")
+    model = _COST_MODELS.get(query.objective)
+    if model is None:  # pragma: no cover
+        # Unreachable while every Objective member has a model. Kept so that a
+        # fourth objective fails loudly here rather than silently returning
+        # the fastest route under a different name.
+        raise NotImplementedError(f"no cost model for {query.objective}")
 
-    came_from = _search(network, query.origin, query.destination)
-    if came_from is None:
+    # Filters first, then search whatever survives. Both return a new Network,
+    # so the caller's graph is never altered — which is what makes it safe for
+    # Phase 6 to hold one built network and serve concurrent requests from it.
+    searchable = network.without_lines(query.avoid_lines)
+    if query.objective is Objective.STEP_FREE:
+        searchable = searchable.step_free_only()
+
+    found = _search(searchable, query.origin, query.destination, model)
+    if found is None:
         return NoRoute(DISCONNECTED)
 
-    return _build_route(network, query.origin, came_from)
+    # The filtered network, not the original: _build_route looks edges back up
+    # to price them, and it must see the same graph the search walked.
+    return _build_route(searchable, query.origin, found)
 
 
 def _search(
-    network: Network, origin: StationId, destination: StationId
+    network: Network,
+    origin: StationId,
+    destination: StationId,
+    model: _CostModel,
 ) -> tuple[dict[Node, Arrival], Node] | None:
     """Dijkstra from every line at the origin to the first line at the target.
 
+    One traversal for every objective. Only the cost model differs, because
+    "fewest changes" is not a different way of walking the graph — it is the
+    same walk measured differently.
+
     Args:
-        network: The graph. Read only.
+        network: The graph, already filtered. Read only.
         origin: Where to start.
         destination: Where to stop.
+        model: How to measure a journey.
 
     Returns:
         The predecessor table and the node the search finished on, or None if
@@ -127,17 +217,17 @@ def _search(
     if not starts:
         return None
 
-    best: dict[Node, int] = {}
+    best: dict[Node, Cost] = {}
     came_from: dict[Node, Arrival] = {}
 
     # (cost, station, line) rather than (cost, node). Tuples compare element
     # by element, and on a tie heapq would otherwise try to order the node
     # tuples themselves — which works but makes the ordering depend on station
     # ids. Naming the fields keeps ties deterministic and the intent visible.
-    heap: list[tuple[int, StationId, LineId]] = []
+    heap: list[tuple[Cost, StationId, LineId]] = []
     for line in sorted(starts):
-        best[(origin, line)] = 0
-        heapq.heappush(heap, (0, origin, line))
+        best[(origin, line)] = model.start
+        heapq.heappush(heap, (model.start, origin, line))
 
     while heap:
         cost, station_id, line = heapq.heappop(heap)
@@ -162,7 +252,7 @@ def _search(
                 came_from,
                 node,
                 (edge.destination, line),
-                cost + edge.seconds,
+                model.advance(cost, edge.seconds, False),
                 False,
             )
 
@@ -176,7 +266,7 @@ def _search(
                 came_from,
                 node,
                 (station_id, interchange.to_line),
-                cost + interchange.seconds,
+                model.advance(cost, interchange.seconds, True),
                 True,
             )
 
@@ -184,16 +274,21 @@ def _search(
 
 
 def _relax(
-    heap: list[tuple[int, StationId, LineId]],
-    best: dict[Node, int],
+    heap: list[tuple[Cost, StationId, LineId]],
+    best: dict[Node, Cost],
     came_from: dict[Node, Arrival],
     current: Node,
     neighbour: Node,
-    cost: int,
+    cost: Cost,
     is_change: bool,
 ) -> None:
     """Record a cheaper way to reach a neighbour, if this is one."""
-    if cost >= best.get(neighbour, cost + 1):
+    # Checked against None rather than a sentinel default. The int version
+    # could use `cost + 1` as "worse than anything"; there is no such trick
+    # for a tuple, and inventing one would be a magic value in the middle of
+    # the one file this project rewrote to remove a magic value.
+    previous = best.get(neighbour)
+    if previous is not None and cost >= previous:
         return
     best[neighbour] = cost
     came_from[neighbour] = (current, is_change)
