@@ -244,6 +244,34 @@ def test_one_accessible_platform_makes_the_station_step_free_for_that_line() -> 
     assert step_free_by_station_line(rows)[("X", "victoria")] is True
 
 
+def test_a_manual_ramp_counts_as_step_free() -> None:
+    # TfL publishes accessibility across two columns and treats both as
+    # step-free in its own journey planner. Reading only
+    # DesignatedLevelAccessPoint drops roughly half the accessible platforms
+    # and leaves the Central and Bakerloo with none at all, which is not true
+    # of the real railway.
+    rows = [
+        {
+            "StopAreaNaptanCode": "X",
+            "Line": "central",
+            "DesignatedLevelAccessPoint": "False",
+            "LevelAccessByManualRamp": "TRUE",
+        },
+        {
+            "StopAreaNaptanCode": "Y",
+            "Line": "central",
+            "DesignatedLevelAccessPoint": "False",
+            "LevelAccessByManualRamp": "False",
+        },
+    ]
+
+    result = step_free_by_station_line(rows)
+
+    assert result[("X", "central")] is True
+    # The counterweight: neither column set still means not step-free.
+    assert result[("Y", "central")] is False
+
+
 def test_step_free_from_the_real_csv() -> None:
     text = (FIXTURES / "PlatformServices.csv").read_text(encoding="utf-8-sig")
     rows = list(csv.DictReader(text.splitlines()))
@@ -470,7 +498,36 @@ def test_an_unmeasured_interchange_gets_the_stated_default() -> None:
     rows = interchanges_from_station_lines(station_lines, {})
 
     assert all(r.seconds == DEFAULT_INTERCHANGE_SECONDS for r in rows)
-    # No measured distance means no evidence the change is step-free.
+
+
+def test_an_unmeasured_change_between_accessible_platforms_is_step_free() -> None:
+    # Inferred, not measured: both platforms are step-free, so the change can
+    # normally be made via the lifts. TfL measures only a few hundred pairs
+    # network-wide, and requiring the measurement marked 6 of 312 changes
+    # step-free — which left the step-free network in fragments and made the
+    # objective answer "no route" for essentially every real journey.
+    station_lines = [
+        StationLineRow("S", "victoria", True),
+        StationLineRow("S", "central", True),
+    ]
+
+    rows = interchanges_from_station_lines(station_lines, {})
+
+    assert all(r.step_free is True for r in rows)
+
+
+def test_a_change_touching_an_inaccessible_platform_is_not_step_free() -> None:
+    # The counterweight, and the direction that matters. An inference that
+    # said yes regardless would be worse than the rule it replaced: claiming
+    # a change is accessible when it is not is the failure that strands
+    # someone mid-journey.
+    station_lines = [
+        StationLineRow("S", "victoria", True),
+        StationLineRow("S", "central", False),
+    ]
+
+    rows = interchanges_from_station_lines(station_lines, {})
+
     assert all(r.step_free is False for r in rows)
 
 
