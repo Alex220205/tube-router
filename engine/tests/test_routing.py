@@ -25,6 +25,7 @@ CONSTRAINT
 from fixtures import (
     change_is_worth_avoiding,
     diamond,
+    equally_fast_one_needs_a_change,
     fastest_differs_from_fewest_changes,
     one_way_pair,
     single_station,
@@ -194,6 +195,22 @@ def test_fastest_and_fewest_changes_return_different_routes() -> None:
     assert (simplest.total_seconds, simplest.changes) == (300, 0)
     assert [leg.line for leg in quickest.legs] == ["red", "blue", "yellow"]
     assert [leg.line for leg in simplest.legs] == ["green"]
+
+
+def test_fastest_breaks_ties_on_fewest_changes() -> None:
+    """The mirror of the test below, and it came from the real network.
+
+    Snaresbrook to Barons Court returned 48 minutes with three changes while a
+    48-minute route with one change existed. Both are optimal by time, so the
+    search was returning whichever it reached first — an answer decided by
+    heap ordering rather than by the question.
+    """
+    result = route_between(equally_fast_one_needs_a_change(), "A", "D")
+
+    assert isinstance(result, Route)
+    assert result.total_seconds == 200
+    assert result.changes == 0
+    assert [leg.line for leg in result.legs] == ["red"]
 
 
 def test_fewest_changes_breaks_ties_on_time() -> None:

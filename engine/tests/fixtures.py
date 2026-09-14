@@ -255,6 +255,30 @@ def fastest_differs_from_fewest_changes() -> Network:
     )
 
 
+def equally_fast_one_needs_a_change() -> Network:
+    """Two routes of identical duration, one of which changes line.
+
+        A --100-- B --100-- D            on `red`,   200 seconds, no change
+        A --90--- C                      on `blue`
+                  C --90--- D            on `green`
+        change at C: blue <-> green, 20 seconds
+
+    Both come to 200 seconds. Fastest has nothing to choose between them on
+    time, so without a tie-break the answer depends on heap ordering — which
+    means it depends on station ids rather than on the question.
+    """
+    return Network(
+        stations=[station(s) for s in "ABCD"],
+        edges=[
+            *ride("A", "B", "red", 100),
+            *ride("B", "D", "red", 100),
+            *ride("A", "C", "blue", 90),
+            *ride("C", "D", "green", 90),
+        ],
+        interchanges=change("C", "blue", "green", 20),
+    )
+
+
 def step_free_is_slower() -> Network:
     """An accessible route exists, and costs more than the quick one.
 

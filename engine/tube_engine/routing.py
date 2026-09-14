@@ -78,7 +78,12 @@ Arrival = tuple[Node, bool]
 # What the search minimises. A tuple rather than an int so that one traversal
 # serves every objective: heapq compares element by element, so (1, 900) beats
 # (2, 400) and (1, 400) beats (1, 900). That ordering is the entire
-# implementation of "fewest changes, ties broken on time".
+# implementation of both "fewest changes, ties broken on time" and its mirror.
+#
+# Every objective carries a tie-break in the second element, so no answer is
+# ever chosen by heap order. Two routes that are equal on the thing you asked
+# for are separated by the thing you did not, rather than by which one the
+# search happened to reach first.
 Cost = tuple[int, ...]
 
 
@@ -99,8 +104,19 @@ class _CostModel:
 
 
 def _by_time(cost: Cost, seconds: int, is_change: bool) -> Cost:
-    """Minimise journey time. Changing costs whatever the interchange says."""
-    return (cost[0] + seconds,)
+    """Minimise journey time, then changes.
+
+    The second element is a tie-break, not a preference: it only ever decides
+    between routes of identical duration. Without it the real network hands
+    back things like Snaresbrook to Barons Court in 48 minutes with three
+    changes, when a 48-minute route with one change exists — both optimal by
+    time, and the search returning whichever it reached first.
+
+    That is not merely worse to read. It makes the answer depend on heap
+    ordering rather than on the question, so the same query could change its
+    mind after an unrelated edit to the data.
+    """
+    return (cost[0] + seconds, cost[1] + int(is_change))
 
 
 def _by_changes(cost: Cost, seconds: int, is_change: bool) -> Cost:
@@ -119,8 +135,8 @@ def _by_changes(cost: Cost, seconds: int, is_change: bool) -> Cost:
 # algorithm — it is this search run against Network.step_free_only(), which is
 # why adding it cost a dictionary entry rather than a function.
 _COST_MODELS: dict[Objective, _CostModel] = {
-    Objective.FASTEST: _CostModel(start=(0,), advance=_by_time),
-    Objective.STEP_FREE: _CostModel(start=(0,), advance=_by_time),
+    Objective.FASTEST: _CostModel(start=(0, 0), advance=_by_time),
+    Objective.STEP_FREE: _CostModel(start=(0, 0), advance=_by_time),
     Objective.FEWEST_CHANGES: _CostModel(start=(0, 0), advance=_by_changes),
 }
 
