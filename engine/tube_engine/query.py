@@ -3,8 +3,9 @@ What a caller asks for: an origin, a destination and an objective.
 
 WHY THIS EXISTS
     One object rather than a widening list of arguments. find_route takes a
-    network and a query, and adding "avoid these lines" in Phase 5 changes
-    this file rather than every call site.
+    network and a query, so Phase 5 added "avoid these lines" by changing this
+    file rather than every call site — which is exactly the cost the shape was
+    chosen to avoid.
 
 WHAT THE 2021 VERSION DID
     Where:  database[works].py lines 460-470, Traversal.__init__
@@ -31,41 +32,47 @@ CONSTRAINT
 from dataclasses import dataclass
 from enum import Enum
 
-from .types import StationId
+from .types import LineId, StationId
 
 
 class Objective(Enum):
     """What the caller is optimising for.
 
-    Only FASTEST exists in Phase 4. FEWEST_CHANGES and STEP_FREE arrive in
-    Phase 5 with the code that implements them.
+    Each member arrived in the phase that implemented it. Shipping one that
+    raised NotImplementedError would advertise something that does not work,
+    and a caller has no way to tell the two apart until it fails.
 
-    Shipping a member that raises NotImplementedError would be advertising
-    something that does not work, and a caller has no way to tell the two
-    apart until it fails. Adding an enum member later is additive and breaks
-    nothing; removing one is not.
+    STEP_FREE is not a third algorithm. It is the fastest search run against
+    Network.step_free_only(), because three copies of Dijkstra would be three
+    places for the same bug to be fixed separately.
     """
 
     FASTEST = "fastest"
+    FEWEST_CHANGES = "fewest_changes"
+    STEP_FREE = "step_free"
 
 
 @dataclass(frozen=True)
 class RouteQuery:
     """A journey to plan.
 
-    There is deliberately no `avoid_lines` field yet. It arrives in Phase 5
-    together with Network.without_lines(), which is what would honour it — a
-    field that looks configurable and is silently ignored is a mistake this
-    project already made once with LOG_LEVEL and recorded in
-    docs/DECISIONS.md.
-
     Attributes:
         origin: Where the journey starts.
         destination: Where it ends. May equal origin, which is answered with
             an empty Route rather than an error.
         objective: What to optimise for.
+        avoid_lines: Lines the route may not use. Honoured by
+            Network.without_lines(), which is why the field arrives in the
+            same phase as that method rather than earlier — a field that looks
+            configurable and is silently ignored is a mistake this project
+            already made once with LOG_LEVEL and recorded in
+            docs/DECISIONS.md.
+
+            A frozenset rather than a set so the query stays hashable, which
+            is what lets Phase 6 use it as a cache key.
     """
 
     origin: StationId
     destination: StationId
     objective: Objective = Objective.FASTEST
+    avoid_lines: frozenset[LineId] = frozenset()
