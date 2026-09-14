@@ -24,6 +24,7 @@ from .network import Network
 from .query import Objective, RouteQuery
 from .result import (
     DISCONNECTED,
+    REASONS,
     UNKNOWN_DESTINATION,
     UNKNOWN_ORIGIN,
     Leg,
@@ -37,6 +38,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     "DISCONNECTED",
+    "REASONS",
     "UNKNOWN_DESTINATION",
     "UNKNOWN_ORIGIN",
     "Edge",
