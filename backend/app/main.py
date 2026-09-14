@@ -41,6 +41,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .core.cache import close as close_cache
 from .core.config import get_settings
 from .core.database import dispose_engine
 from .routes.health import router as health_route
@@ -56,12 +57,16 @@ settings = get_settings()
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Start-up and shut-down work, either side of the yield.
 
-    Nothing happens on the way in. On the way out the connection pool is
-    closed, which is the part that matters — an unclean exit leaves
-    connections lingering on the Postgres side until it times them out.
+    Nothing happens on the way in. The routing graph is built on first use
+    instead, so a slow or empty database does not stop the service starting —
+    Phase 0 established that /health must be able to report "degraded".
+
+    On the way out both pools are closed. An unclean exit leaves connections
+    lingering on the Postgres side until it times them out.
     """
     yield
     await dispose_engine()
+    await close_cache()
 
 
 app = FastAPI(

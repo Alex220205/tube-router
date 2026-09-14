@@ -37,6 +37,7 @@ import sys
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import cache
 from app.core.config import get_settings
 from app.core.database import SessionLocal, engine
 from app.models import (
@@ -48,7 +49,7 @@ from app.models import (
     StationLine,
     TransportMode,
 )
-from app.services import seed_checks
+from app.services import graph_loader, seed_checks
 from app.services.seed import (
     complexes_from_stations,
     durations_from_timetable,
@@ -308,6 +309,13 @@ async def main() -> int:
         async with session.begin():
             await write_everything(session, raw)
         log("committed")
+
+        # The API holds a built routing graph and caches the rows behind it.
+        # Without this a reseed is invisible to a running service until the
+        # cache expires an hour later, which is exactly the kind of "it works
+        # after a restart" behaviour this project exists to stop shipping.
+        await cache.delete(graph_loader.CACHE_KEY)
+        log("cleared the cached network")
 
         log("\nchecks:")
         results = await seed_checks.run_all(session)

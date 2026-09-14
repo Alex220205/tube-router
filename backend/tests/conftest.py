@@ -58,6 +58,18 @@ else:
 
 os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
 
+# Point the cache at a port nothing listens on. Unconditional, for the same
+# reason DATABASE_URL is: .env names the compose hostname `redis`, which does
+# not resolve from here, and a failed DNS lookup is not covered by the client's
+# socket timeout — it took about two seconds per call, which made the endpoint
+# suite nearly three times slower. localhost refuses instantly.
+#
+# So the suite runs entirely on the cache-miss path, which is the right
+# default: it proves every endpoint answers identically with Redis absent,
+# and that is the property core/cache.py's swallowed exceptions exist to buy.
+# The cache's own behaviour is tested directly in tests/core/test_cache.py.
+os.environ["REDIS_URL"] = "redis://127.0.0.1:1/0"
+
 from collections.abc import AsyncIterator, Iterator  # noqa: E402
 from typing import Any  # noqa: E402
 
@@ -71,6 +83,7 @@ from sqlalchemy.pool import NullPool  # noqa: E402
 
 from app.core.database import get_db  # noqa: E402
 from app.main import app  # noqa: E402
+from app.services import graph_loader  # noqa: E402
 
 
 class FakeSession:
@@ -140,6 +153,24 @@ def migrated_database() -> Iterator[str]:
 
     # The schema is left in place. Re-running upgrade on the next session is a
     # no-op, and CI gets a fresh container every time regardless.
+
+
+@pytest.fixture(autouse=True)
+def fresh_network() -> Iterator[None]:
+    """Drop the process-wide routing graph around every test.
+
+    get_network caches the built Network for the life of the process, which
+    is right in production and wrong here: each test rolls its database back
+    and seeds its own, so the second test to call /route would be answered
+    from the first test's graph.
+
+    Autouse and unconditional. It costs nothing when no test builds one, and
+    the failure it prevents is the confusing kind — a passing suite whose
+    tests only pass in the order they happen to run.
+    """
+    graph_loader.forget()
+    yield
+    graph_loader.forget()
 
 
 @pytest.fixture

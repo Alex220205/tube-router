@@ -23,6 +23,7 @@ CONSTRAINT
     suite still runs on a laptop with nothing started; CI sets it explicitly.
 """
 
+import json
 import os
 
 import pytest
@@ -32,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Interchange as InterchangeRow
 from app.models import Line as LineRow
 from app.models import Segment, Station, StationLine, TransportMode
+from app.services import graph_loader
 from app.services.graph_loader import load_network
 from tube_engine import Route, RouteQuery, find_route
 
@@ -247,3 +249,59 @@ async def test_the_loader_reads_and_never_writes(db: AsyncSession) -> None:
 
     assert await db.scalar(select(func.count()).select_from(Station)) == before
     assert not db.new and not db.dirty and not db.deleted
+
+
+async def test_the_network_is_built_once_and_reused(db: AsyncSession) -> None:
+    # The direct fix for the 2021 fault. Create_graph rebuilt the entire graph
+    # from SQL on every search, with a full SELECT * FROM stations inside a
+    # triple-nested loop; this builds it once per process.
+    #
+    # Asserted as identity, not equality: two equal graphs would still mean
+    # the work was done twice.
+    red = await build_line(db, "red")
+    a = await build_station(db, "A", -0.1, 51.5)
+    b = await build_station(db, "B", -0.2, 51.6)
+    await connect(db, red, a, b, 120)
+
+    first = await graph_loader.get_network(db)
+    second = await graph_loader.get_network(db)
+
+    assert first is second
+
+
+async def test_forgetting_makes_the_next_request_rebuild(db: AsyncSession) -> None:
+    # Sharing one immutable graph is only safe if there is a way to replace it
+    # after a reseed. Without this the service would serve the old network
+    # until someone restarted the process.
+    red = await build_line(db, "red")
+    a = await build_station(db, "A", -0.1, 51.5)
+    b = await build_station(db, "B", -0.2, 51.6)
+    await connect(db, red, a, b, 120)
+
+    first = await graph_loader.get_network(db)
+    graph_loader.forget()
+    second = await graph_loader.get_network(db)
+
+    assert first is not second
+    assert len(first) == len(second)
+
+
+async def test_rows_survive_a_round_trip_through_json(db: AsyncSession) -> None:
+    # read_rows output goes into Redis, so it has to be JSON-safe. A value
+    # that is not — a Decimal from a numeric column, say — would make every
+    # write fail and the cache would silently never work, showing up only as
+    # unexplained slowness.
+    red = await build_line(db, "red")
+    a = await build_station(db, "A", -0.1419, 51.5152)
+    b = await build_station(db, "B", -0.2, 51.6)
+    await connect(db, red, a, b, 120)
+    db.add(StationLine(station_id=a.id, line_id=red.id, step_free_to_platform=True))
+    await db.flush()
+
+    rows = await graph_loader.read_rows(db)
+    restored = graph_loader.network_from_rows(json.loads(json.dumps(rows)))
+
+    direct = graph_loader.network_from_rows(rows)
+    assert len(restored) == len(direct)
+    assert restored.step_free_at("A", "red") is True
+    assert restored.station("A").lat == pytest.approx(51.5152)

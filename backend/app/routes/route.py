@@ -108,9 +108,9 @@ async def plan_route(request: RouteRequest, session: SessionDep) -> RouteRespons
                 ),
             )
 
-        # Rebuilt per request for now. The next commit caches it per process,
-        # which is the direct fix for Create_graph running inside the search.
-        network = await graph_loader.load_network(session)
+        # Built once per process, not per request. The direct fix for
+        # Create_graph rebuilding the whole graph from SQL inside the search.
+        network = await graph_loader.get_network(session)
 
         # Named separately so the message can say which end was wrong. "One of
         # your stations does not exist" is not a useful thing to tell someone.
