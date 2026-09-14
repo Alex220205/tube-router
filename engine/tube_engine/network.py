@@ -36,6 +36,11 @@ WHAT CHANGED AND WHY
     search keeps its own distance dict rather than touching the graph. Bug (3)
     is not avoided, it is not expressible: there is nothing to pop from.
 
+    step_free_only() and without_lines() return a new Network rather than
+    editing this one. That is what makes them safe to apply per request in
+    Phase 6 — a filter that edited in place would make the graph depend on
+    which query ran last, which is bug (3) with a new spelling.
+
 WHAT'S NEW
     Interchanges, and lines_at(). The old connections table had a line_id
     column and Create_graph read it then never used it, which is exactly why
@@ -48,7 +53,7 @@ CONSTRAINT
     Enforced by tests/test_imports.py.
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 
 from .types import Edge, Interchange, LineId, Station, StationId
 
@@ -167,3 +172,70 @@ class Network:
             The line ids. Empty for an unknown or unconnected station.
         """
         return self._lines.get(station_id, frozenset())
+
+    def _all_edges(self) -> Iterator[Edge]:
+        """Every edge, flattened back out of the adjacency index."""
+        for edges in self._edges.values():
+            yield from edges
+
+    def _all_interchanges(self) -> Iterator[Interchange]:
+        """Every interchange, flattened back out of the index."""
+        for interchanges in self._interchanges.values():
+            yield from interchanges
+
+    def step_free_only(self) -> "Network":
+        """A network containing only the rides and changes that are step-free.
+
+        Every station is kept, including ones nothing step-free reaches. That
+        is deliberate: dropping them would turn "you cannot get to Epping
+        step-free" into NoRoute("unknown_destination"), which is the engine
+        claiming a real station does not exist. The honest answer is
+        "disconnected", and keeping the stations is what preserves the
+        difference.
+
+        Returns:
+            A new Network. This one is untouched — the filters are the reason
+            immutability was built in Phase 4, since a filter that edited in
+            place would make the graph depend on which query ran last.
+        """
+        return Network(
+            stations=self._stations.values(),
+            edges=(edge for edge in self._all_edges() if edge.step_free),
+            interchanges=(
+                interchange
+                for interchange in self._all_interchanges()
+                if interchange.step_free
+            ),
+        )
+
+    def without_lines(self, lines: Iterable[LineId]) -> "Network":
+        """A network with the named lines removed entirely.
+
+        An interchange goes if **either** side names an excluded line. Changing
+        from the Victoria to a suspended Central is not possible just because
+        the Victoria is running, and filtering on from_line alone would leave
+        changes that strand you on a line that is not moving.
+
+        Args:
+            lines: Line ids to remove. Unknown ids are ignored rather than
+                raising — "avoid the Bakerloo" is a reasonable thing to ask of
+                a network that has no Bakerloo.
+
+        Returns:
+            A new Network, or this one unchanged when nothing was excluded.
+            Returning self is safe precisely because nothing here mutates.
+        """
+        excluded = frozenset(lines)
+        if not excluded:
+            return self
+
+        return Network(
+            stations=self._stations.values(),
+            edges=(edge for edge in self._all_edges() if edge.line not in excluded),
+            interchanges=(
+                interchange
+                for interchange in self._all_interchanges()
+                if interchange.from_line not in excluded
+                and interchange.to_line not in excluded
+            ),
+        )

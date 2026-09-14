@@ -222,3 +222,81 @@ def one_way_pair() -> Network:
 def single_station() -> Network:
     """One station, no track. The degenerate case."""
     return Network(stations=[station("A")], edges=[], interchanges=[])
+
+
+def fastest_differs_from_fewest_changes() -> Network:
+    """The two objectives genuinely disagree.
+
+        A --30-- B --30-- C --30-- D     red, blue, yellow in turn
+        change at B: red <-> blue,   20 seconds
+        change at C: blue <-> yellow, 20 seconds
+
+        A ------------300------------ D  on `green`, one hop
+
+    Fastest:         30 + 20 + 30 + 20 + 30 = 130 seconds, two changes.
+    Fewest changes:  300 seconds, no changes.
+
+    This is the fixture that proves the feature exists. If both objectives
+    returned the same route here, FEWEST_CHANGES would be FASTEST wearing a
+    different name and every test of it would still pass.
+    """
+    return Network(
+        stations=[station(s) for s in "ABCD"],
+        edges=[
+            *ride("A", "B", "red", 30),
+            *ride("B", "C", "blue", 30),
+            *ride("C", "D", "yellow", 30),
+            *ride("A", "D", "green", 300),
+        ],
+        interchanges=[
+            *change("B", "red", "blue", 20),
+            *change("C", "blue", "yellow", 20),
+        ],
+    )
+
+
+def step_free_is_slower() -> Network:
+    """An accessible route exists, and costs more than the quick one.
+
+        A --60--- B --60--> D     on `red`,  B->D NOT step-free
+        A --150-- C --150-- D     on `blue`, entirely step-free
+
+    Fastest:    120 seconds via B.
+    Step-free:  300 seconds via C, because filtering removes B->D.
+
+    The point is that both are real routes. A step-free search that simply
+    returned the fastest one would look correct here until someone tried to
+    use it.
+    """
+    return Network(
+        stations=[station(s) for s in "ABCD"],
+        edges=[
+            *ride("A", "B", "red", 60),
+            *ride("B", "D", "red", 60, step_free=False),
+            *ride("A", "C", "blue", 150),
+            *ride("C", "D", "blue", 150),
+        ],
+        interchanges=[],
+    )
+
+
+def step_free_is_impossible() -> Network:
+    """Every way into D crosses a step.
+
+        A --60-- B --60--> D     on `red`,  B->D NOT step-free
+        A --60-- C --60--> D     on `blue`, C->D NOT step-free
+
+    D is real, reachable normally, and unreachable step-free. The correct
+    answer is NoRoute("disconnected") — not "unknown_destination", which would
+    be the engine claiming a station that exists does not.
+    """
+    return Network(
+        stations=[station(s) for s in "ABCD"],
+        edges=[
+            *ride("A", "B", "red", 60),
+            *ride("B", "D", "red", 60, step_free=False),
+            *ride("A", "C", "blue", 60),
+            *ride("C", "D", "blue", 60, step_free=False),
+        ],
+        interchanges=[],
+    )

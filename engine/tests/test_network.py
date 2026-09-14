@@ -25,7 +25,14 @@ CONSTRAINT
 """
 
 import pytest
-from fixtures import diamond, one_way_pair, single_station, straight_line, two_lines
+from fixtures import (
+    diamond,
+    one_way_pair,
+    single_station,
+    step_free_is_slower,
+    straight_line,
+    two_lines,
+)
 
 
 def test_adjacency_is_indexed_by_origin() -> None:
@@ -86,3 +93,72 @@ def test_a_station_that_does_not_exist_raises_rather_than_returning_none() -> No
     # would defer that failure to somewhere less informative.
     with pytest.raises(KeyError):
         diamond().station("NOWHERE")
+
+
+def test_step_free_only_keeps_every_station_and_drops_only_the_steps() -> None:
+    # Keeping the stations is what preserves the difference between "that
+    # station does not exist" and "you cannot get there step-free". Dropping
+    # D here would make the engine deny a station it can see.
+    network = step_free_is_slower()
+
+    accessible = network.step_free_only()
+
+    assert len(accessible) == len(network) == 4
+    assert "D" in accessible
+    # Only the inaccessible hop goes. B keeps its step-free ride back to A, so
+    # D becomes unreachable on red without B vanishing from the network.
+    assert {edge.destination for edge in accessible.edges_from("B")} == {"A"}
+    assert {edge.destination for edge in network.edges_from("B")} == {"A", "D"}
+
+
+def test_without_lines_drops_an_interchange_when_either_side_names_the_line() -> None:
+    # The easy mistake is filtering on from_line alone, which leaves changes
+    # that deposit you on a line that is not running.
+    network = two_lines()
+    assert network.interchanges_at("B") != ()
+
+    without_blue = network.without_lines(["blue"])
+
+    assert without_blue.interchanges_at("B") == ()
+    assert all(edge.line != "blue" for edge in without_blue.edges_from("B"))
+
+
+def test_filtering_leaves_the_original_network_untouched() -> None:
+    """The 2021 regression, in the place Phase 5 could reintroduce it.
+
+    A filter that edited in place would make the graph depend on which query
+    ran last — line 532's aliasing bug with a new spelling.
+    """
+    network = two_lines()
+    edges_before = network.edges_from("B")
+    changes_before = network.interchanges_at("B")
+
+    network.without_lines(["blue"])
+    network.step_free_only()
+
+    assert network.edges_from("B") == edges_before
+    assert network.interchanges_at("B") == changes_before
+    assert len(network) == 4
+
+
+def test_excluding_nothing_returns_an_equivalent_network() -> None:
+    # Skipping the rebuild is safe only because nothing mutates. Asserted as
+    # identity deliberately: if the shortcut is ever removed, this should be
+    # reconsidered rather than silently costing a copy per request.
+    network = two_lines()
+
+    assert network.without_lines([]) is network
+
+
+def test_the_filters_compose_in_either_order() -> None:
+    # find_route applies avoid_lines then step_free_only. Order must not
+    # matter, or the result would depend on an implementation detail of the
+    # dispatch rather than on the query.
+    network = step_free_is_slower()
+
+    one_way = network.without_lines(["red"]).step_free_only()
+    other_way = network.step_free_only().without_lines(["red"])
+
+    assert one_way.edges_from("A") == other_way.edges_from("A")
+    assert one_way.edges_from("C") == other_way.edges_from("C")
+    assert len(one_way) == len(other_way)
