@@ -474,6 +474,64 @@ def interchange_distances(
     return distances
 
 
+def _shortest_walks(
+    naptan: str,
+    codes: list[str],
+    distances: dict[tuple[str, str, str], int],
+) -> dict[tuple[str, str], int]:
+    """Interchange times at one station, closed under the triangle inequality.
+
+    TfL publishes the same corridor whole and in halves. At Green Park the
+    direct jubilee-to-victoria walk is 380 m, and jubilee to piccadilly to
+    victoria is 220 + 160 — the same 380 m. Converting each to whole seconds
+    independently gives 317 for the direct walk and 183 + 133 = 316 for the
+    decomposed one, so the router could save a second by walking through a
+    platform it never boards. Sum-of-rounded against rounded-of-sum.
+
+    Taking the shortest walk over every platform at the station removes that:
+    a chained walk can never be strictly cheaper than the direct one, so the
+    search has no arbitrage to find. Where the two tie, the (seconds, changes)
+    ordering in the engine already prefers the single change.
+
+    Floyd-Warshall, over at most five or six lines per station.
+
+    Args:
+        naptan: The station, used only to look distances up.
+        codes: Line codes calling there.
+        distances: Measured platform-to-platform distances in metres.
+
+    Returns:
+        Ordered line pair to seconds. Directional throughout — the walk one
+        way is not the walk back.
+    """
+    cost: dict[tuple[str, str], int] = {}
+    for source in codes:
+        for target in codes:
+            if source == target:
+                continue
+            metres = distances.get((naptan, source, target))
+            if metres is None:
+                cost[(source, target)] = DEFAULT_INTERCHANGE_SECONDS
+            else:
+                cost[(source, target)] = max(
+                    MIN_INTERCHANGE_SECONDS,
+                    round(metres / WALKING_SPEED_M_PER_S),
+                )
+
+    for via in codes:
+        for source in codes:
+            if source == via:
+                continue
+            for target in codes:
+                if target in (source, via):
+                    continue
+                through = cost[(source, via)] + cost[(via, target)]
+                if through < cost[(source, target)]:
+                    cost[(source, target)] = through
+
+    return cost
+
+
 def interchanges_from_station_lines(
     station_lines: list[StationLineRow],
     distances: dict[tuple[str, str, str], int],
@@ -500,18 +558,15 @@ def interchanges_from_station_lines(
     rows: list[InterchangeRow] = []
     for naptan in sorted(by_station):
         serving = sorted(by_station[naptan], key=lambda row: row.line_code)
+        codes = [row.line_code for row in serving]
+        cost = _shortest_walks(naptan, codes, distances)
+
         for source in serving:
             for target in serving:
                 if source.line_code == target.line_code:
                     continue
                 metres = distances.get((naptan, source.line_code, target.line_code))
-                if metres is None:
-                    seconds = DEFAULT_INTERCHANGE_SECONDS
-                else:
-                    seconds = max(
-                        MIN_INTERCHANGE_SECONDS,
-                        round(metres / WALKING_SPEED_M_PER_S),
-                    )
+                seconds = cost[(source.line_code, target.line_code)]
                 rows.append(
                     InterchangeRow(
                         naptan_id=naptan,

@@ -548,6 +548,70 @@ def test_a_measured_interchange_uses_the_distance_and_is_step_free() -> None:
     assert unmeasured.seconds == DEFAULT_INTERCHANGE_SECONDS
 
 
+def test_a_chained_walk_never_undercuts_the_direct_one() -> None:
+    """The real Green Park numbers, and the bug they caused.
+
+    TfL measures the same corridor whole and in halves: jubilee to victoria is
+    380 m, and jubilee to piccadilly to victoria is 220 + 160 — the same 380 m.
+    Rounding each to whole seconds independently gives 317 direct against
+    183 + 133 = 316 decomposed, so the router could save a second by walking
+    through a platform it never boards.
+
+    Two of 6006 real routes did exactly that, and reported a total their own
+    legs could not account for.
+    """
+    station_lines = [
+        StationLineRow("940GZZLUGPK", "jubilee", True),
+        StationLineRow("940GZZLUGPK", "piccadilly", True),
+        StationLineRow("940GZZLUGPK", "victoria", True),
+    ]
+    distances = {
+        ("940GZZLUGPK", "jubilee", "victoria"): 380,
+        ("940GZZLUGPK", "victoria", "jubilee"): 380,
+        ("940GZZLUGPK", "jubilee", "piccadilly"): 220,
+        ("940GZZLUGPK", "piccadilly", "jubilee"): 220,
+        ("940GZZLUGPK", "piccadilly", "victoria"): 160,
+        ("940GZZLUGPK", "victoria", "piccadilly"): 160,
+    }
+
+    rows = interchanges_from_station_lines(station_lines, distances)
+    seconds = {(r.from_line_code, r.to_line_code): r.seconds for r in rows}
+
+    # 317 direct would be beatable by 183 + 133. Closed to the shorter one.
+    assert seconds[("jubilee", "victoria")] == 316
+    assert seconds[("victoria", "jubilee")] == 316
+    # The halves are untouched — nothing shorter runs through them.
+    assert seconds[("jubilee", "piccadilly")] == 183
+    assert seconds[("piccadilly", "victoria")] == 133
+
+    # The property, stated directly: no two-step walk beats a one-step walk.
+    for a, b in seconds:
+        for via in {"jubilee", "piccadilly", "victoria"} - {a, b}:
+            assert seconds[(a, b)] <= seconds[(a, via)] + seconds[(via, b)]
+
+
+def test_closure_improves_a_default_that_has_a_measured_path_through() -> None:
+    # A pair with no measurement of its own would take the flat 180-second
+    # default, even when two measured walks connect it in 120. The default is
+    # a stated guess and real measurements should beat it.
+    station_lines = [
+        StationLineRow("S", "a", True),
+        StationLineRow("S", "b", True),
+        StationLineRow("S", "c", True),
+    ]
+    distances = {
+        ("S", "a", "b"): 72,  # 60s
+        ("S", "b", "c"): 72,  # 60s
+    }
+
+    rows = interchanges_from_station_lines(station_lines, distances)
+    seconds = {(r.from_line_code, r.to_line_code): r.seconds for r in rows}
+
+    assert seconds[("a", "c")] == 120
+    # The reverse has no measured path at all, so it keeps the default.
+    assert seconds[("c", "a")] == DEFAULT_INTERCHANGE_SECONDS
+
+
 def test_no_interchange_is_instant() -> None:
     station_lines = [
         StationLineRow("S", "victoria", True),
