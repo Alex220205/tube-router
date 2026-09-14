@@ -30,15 +30,28 @@ from tube_engine.network import Network
 from tube_engine.types import Edge, Interchange, Station
 
 
-def station(station_id: str, *, step_free: bool = True) -> Station:
+def station(station_id: str) -> Station:
     """A station at a throwaway position. Coordinates are not routed on."""
     return Station(
         id=station_id,
         name=f"{station_id} Station",
         lat=51.5,
         lon=-0.1,
-        step_free=step_free,
     )
+
+
+def every_platform(network_lines: dict[str, list[str]]) -> list[tuple[str, str]]:
+    """Declare which platforms are step-free, as {station: [lines]}.
+
+    Spelled out per fixture rather than defaulted to "all accessible",
+    because a default here would make the step-free tests pass for the wrong
+    reason — the interesting cases are the ones where a platform is missing.
+    """
+    return [
+        (station_id, line)
+        for station_id, lines in network_lines.items()
+        for line in lines
+    ]
 
 
 def ride(
@@ -47,7 +60,6 @@ def ride(
     line: str,
     seconds: int,
     *,
-    step_free: bool = True,
     both_ways: bool = True,
 ) -> list[Edge]:
     """One hop, mirrored unless told otherwise.
@@ -55,13 +67,16 @@ def ride(
     Mirrored by default because most track runs both ways and writing each
     direction out doubles the noise in every fixture. `both_ways=False` is for
     the cases where the asymmetry is the point.
+
+    There is no step_free argument. A ride is always step-free once you are
+    aboard; accessibility belongs to the platforms at either end and to the
+    changes in between.
     """
     forward = Edge(
         origin=origin,
         destination=destination,
         line=line,
         seconds=seconds,
-        step_free=step_free,
     )
     if not both_ways:
         return [forward]
@@ -72,7 +87,6 @@ def ride(
             destination=origin,
             line=line,
             seconds=seconds,
-            step_free=step_free,
         ),
     ]
 
@@ -252,6 +266,17 @@ def fastest_differs_from_fewest_changes() -> Network:
             *change("B", "red", "blue", 20),
             *change("C", "blue", "yellow", 20),
         ],
+        # Everything accessible, so all three objectives return a route here
+        # and the invariants can be asserted across them. The interesting
+        # step-free cases live in their own fixtures below.
+        step_free_platforms=every_platform(
+            {
+                "A": ["red", "green"],
+                "B": ["red", "blue"],
+                "C": ["blue", "yellow"],
+                "D": ["yellow", "green"],
+            }
+        ),
     )
 
 
@@ -282,45 +307,74 @@ def equally_fast_one_needs_a_change() -> Network:
 def step_free_is_slower() -> Network:
     """An accessible route exists, and costs more than the quick one.
 
-        A --60--- B --60--> D     on `red`,  B->D NOT step-free
-        A --150-- C --150-- D     on `blue`, entirely step-free
+        A --60--- B --60-- D     on `red`,   120 seconds
+        A --150-- C --150- D     on `blue`,  300 seconds
 
-    Fastest:    120 seconds via B.
-    Step-free:  300 seconds via C, because filtering removes B->D.
+        step-free platforms: A on both lines, C and D on blue.
+        D's `red` platform is NOT step-free, and B has nothing accessible.
 
-    The point is that both are real routes. A step-free search that simply
-    returned the fastest one would look correct here until someone tried to
-    use it.
+    Fastest:    120 seconds on red, ending at a platform you cannot leave.
+    Step-free:  300 seconds on blue, which you can. No change is needed —
+                A is on both lines, so the search simply starts on blue.
+
+    Note that the red route is not removed from the graph. The rides are
+    fine; you just cannot get out at the far end. That is exactly the
+    distinction the both-ends edge model could not express, because it
+    deleted the rides instead.
     """
     return Network(
         stations=[station(s) for s in "ABCD"],
         edges=[
             *ride("A", "B", "red", 60),
-            *ride("B", "D", "red", 60, step_free=False),
+            *ride("B", "D", "red", 60),
             *ride("A", "C", "blue", 150),
             *ride("C", "D", "blue", 150),
         ],
         interchanges=[],
+        step_free_platforms=every_platform(
+            {"A": ["red", "blue"], "C": ["blue"], "D": ["blue"]}
+        ),
     )
 
 
 def step_free_is_impossible() -> Network:
-    """Every way into D crosses a step.
+    """D is real, reachable, and has no accessible platform.
 
-        A --60-- B --60--> D     on `red`,  B->D NOT step-free
-        A --60-- C --60--> D     on `blue`, C->D NOT step-free
+        A --60-- B --60-- D     on `red`
+        A --60-- C --60-- D     on `blue`
 
-    D is real, reachable normally, and unreachable step-free. The correct
-    answer is NoRoute("disconnected") — not "unknown_destination", which would
-    be the engine claiming a station that exists does not.
+        step-free platforms: A and B on red, A and C on blue. D: none.
+
+    The correct answer is NoRoute("disconnected") — not "unknown_destination",
+    which would be the engine claiming a station that exists does not.
     """
     return Network(
         stations=[station(s) for s in "ABCD"],
         edges=[
             *ride("A", "B", "red", 60),
-            *ride("B", "D", "red", 60, step_free=False),
+            *ride("B", "D", "red", 60),
             *ride("A", "C", "blue", 60),
-            *ride("C", "D", "blue", 60, step_free=False),
+            *ride("C", "D", "blue", 60),
         ],
         interchanges=[],
+        step_free_platforms=every_platform(
+            {"A": ["red", "blue"], "B": ["red"], "C": ["blue"]}
+        ),
+    )
+
+
+def inaccessible_origin() -> Network:
+    """The destination is accessible; the origin is not.
+
+        A --60-- B     on `red`
+        step-free platforms: B only.
+
+    You cannot board. The mirror of step_free_is_impossible, and the case a
+    model that only checked the destination would get wrong.
+    """
+    return Network(
+        stations=[station("A"), station("B")],
+        edges=ride("A", "B", "red", 60),
+        interchanges=[],
+        step_free_platforms=every_platform({"B": ["red"]}),
     )

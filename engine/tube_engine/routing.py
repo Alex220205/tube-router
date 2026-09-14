@@ -175,10 +175,28 @@ def find_route(network: Network, query: RouteQuery) -> Route | NoRoute:
     # so the caller's graph is never altered — which is what makes it safe for
     # Phase 6 to hold one built network and serve concurrent requests from it.
     searchable = network.without_lines(query.avoid_lines)
-    if query.objective is Objective.STEP_FREE:
+    step_free = query.objective is Objective.STEP_FREE
+    if step_free:
         searchable = searchable.step_free_only()
 
-    found = _search(searchable, query.origin, query.destination, model)
+    # A step-free journey has to begin on a platform you can reach and end on
+    # one you can leave. The changes between are already filtered out of the
+    # graph; these two ends are the part only the search knows about, because
+    # only it knows which platform you arrive on.
+    if step_free:
+        starts = searchable.step_free_lines_at(query.origin)
+
+        def accept(station_id: StationId, line: LineId) -> bool:
+            return station_id == query.destination and searchable.step_free_at(
+                station_id, line
+            )
+    else:
+        starts = searchable.lines_at(query.origin)
+
+        def accept(station_id: StationId, line: LineId) -> bool:
+            return station_id == query.destination
+
+    found = _search(searchable, query.origin, starts, accept, model)
     if found is None:
         return NoRoute(DISCONNECTED)
 
@@ -190,30 +208,34 @@ def find_route(network: Network, query: RouteQuery) -> Route | NoRoute:
 def _search(
     network: Network,
     origin: StationId,
-    destination: StationId,
+    starts: frozenset[LineId],
+    accept: Callable[[StationId, LineId], bool],
     model: _CostModel,
 ) -> tuple[dict[Node, Arrival], Node] | None:
-    """Dijkstra from every line at the origin to the first line at the target.
+    """Dijkstra from a set of starting platforms to the first accepted one.
 
-    One traversal for every objective. Only the cost model differs, because
-    "fewest changes" is not a different way of walking the graph — it is the
-    same walk measured differently.
+    One traversal for every objective. Only three things differ: where it may
+    begin, what counts as arriving, and how a journey is measured. "Fewest
+    changes" is not a different way of walking the graph — it is the same walk
+    measured differently, and step-free is the same walk begun and ended in
+    fewer places.
 
     Args:
         network: The graph, already filtered. Read only.
         origin: Where to start.
-        destination: Where to stop.
+        starts: Which lines at the origin may be boarded. Standing there you
+            are not yet on any line, so each is a starting node at zero cost —
+            which avoids inventing a virtual "on no line" node and the special
+            cases that come with it.
+        accept: Given a station and the line arrived on, whether the journey
+            is over. A plain destination check for most objectives; step-free
+            additionally requires the platform be one you can leave.
         model: How to measure a journey.
 
     Returns:
         The predecessor table and the node the search finished on, or None if
         the destination cannot be reached.
     """
-    # Standing at the origin you are not yet on any line, so every line
-    # serving it is a valid starting node at zero cost. This avoids inventing
-    # a virtual "on no line" node and the special cases that would come with
-    # it.
-    starts = network.lines_at(origin)
     if not starts:
         return None
 
@@ -239,7 +261,7 @@ def _search(
         if cost > best.get(node, cost):
             continue
 
-        if station_id == destination:
+        if accept(station_id, line):
             return came_from, node
 
         # Riding one stop stays on the same line.
@@ -352,7 +374,6 @@ def _build_route(
         edge = _find_edge(network, from_station, to_station, from_line)
         total_seconds += edge.seconds
         leg_seconds += edge.seconds
-        step_free = step_free and edge.step_free
         stations.append(to_station)
         line = from_line
 
@@ -365,8 +386,31 @@ def _build_route(
         # A journey with two legs involved one change. Derived rather than
         # counted separately, so the two can never disagree.
         changes=max(len(legs) - 1, 0),
-        step_free=step_free,
+        # The two ends, plus the changes accumulated above. Riding contributes
+        # nothing — you need no accessible route at a station you stay on the
+        # train through — so this is the whole of what "step-free" means for a
+        # journey. Reported for every objective, not only STEP_FREE, which is
+        # why it is computed here rather than assumed from the filtering.
+        step_free=step_free and _ends_are_step_free(network, legs),
     )
+
+
+def _ends_are_step_free(network: Network, legs: list[Leg]) -> bool:
+    """Whether you can board at the start and alight at the end.
+
+    Args:
+        network: The graph, which holds platform accessibility.
+        legs: The assembled journey. Empty for origin == destination, which is
+            step-free because it involves no travelling.
+
+    Returns:
+        True when both end platforms are reachable step-free.
+    """
+    if not legs:
+        return True
+    boarding = network.step_free_at(legs[0].stations[0], legs[0].line)
+    alighting = network.step_free_at(legs[-1].stations[-1], legs[-1].line)
+    return boarding and alighting
 
 
 def _find_edge(

@@ -66,6 +66,7 @@ class Network:
         stations: Iterable[Station],
         edges: Iterable[Edge],
         interchanges: Iterable[Interchange],
+        step_free_platforms: Iterable[tuple[StationId, LineId]] = (),
     ) -> None:
         """Index the network for lookup.
 
@@ -78,8 +79,17 @@ class Network:
                 for its own uniqueness, and the schema already enforces it.
             edges: Every directional ride.
             interchanges: Every directional change.
+            step_free_platforms: Which (station, line) platforms can be
+                reached step-free from the street. Defaults to none, so a
+                network built without it answers "not step-free" to
+                everything rather than claiming access it was never told
+                about — the safe direction, since the failure that strands
+                someone is claiming access that is not there.
         """
         self._stations: dict[StationId, Station] = {s.id: s for s in stations}
+        self._step_free: frozenset[tuple[StationId, LineId]] = frozenset(
+            step_free_platforms
+        )
 
         # Built as lists, frozen into tuples below. A tuple cannot be appended
         # to by accident, which matters more here than anywhere else in the
@@ -173,6 +183,33 @@ class Network:
         """
         return self._lines.get(station_id, frozenset())
 
+    def step_free_at(self, station_id: StationId, line: LineId) -> bool:
+        """Whether this platform can be reached step-free from the street.
+
+        Args:
+            station_id: The station.
+            line: The line whose platform is being asked about.
+
+        Returns:
+            True only where the caller said so. Green Park is step-free on the
+            Victoria line and not on the Piccadilly, which is why this takes a
+            line and a station rather than just a station.
+        """
+        return (station_id, line) in self._step_free
+
+    def step_free_lines_at(self, station_id: StationId) -> frozenset[LineId]:
+        """The lines at a station whose platforms are step-free.
+
+        Used to seed a step-free search, the way lines_at seeds an ordinary
+        one: you can only start a step-free journey from a platform you can
+        actually reach.
+        """
+        return frozenset(
+            line
+            for line in self.lines_at(station_id)
+            if self.step_free_at(station_id, line)
+        )
+
     def _all_edges(self) -> Iterator[Edge]:
         """Every edge, flattened back out of the adjacency index."""
         for edges in self._edges.values():
@@ -184,14 +221,21 @@ class Network:
             yield from interchanges
 
     def step_free_only(self) -> "Network":
-        """A network containing only the rides and changes that are step-free.
+        """A network whose every change can be made step-free.
 
-        Every station is kept, including ones nothing step-free reaches. That
-        is deliberate: dropping them would turn "you cannot get to Epping
-        step-free" into NoRoute("unknown_destination"), which is the engine
-        claiming a real station does not exist. The honest answer is
-        "disconnected", and keeping the stations is what preserves the
-        difference.
+        **Rides are kept, all of them.** You need no accessible route at a
+        station you stay on the train through, so filtering rides by the
+        accessibility of their endpoints removes journeys that are perfectly
+        possible — it left 123 of 754 real rides and broke the accessible
+        network into fragments. What a step-free journey actually requires is
+        an accessible origin platform, accessible changes, and an accessible
+        destination platform. The changes are filtered here; the two ends are
+        the search's business, because only it knows where they are.
+
+        Every station is kept too. Dropping them would turn "you cannot get to
+        Epping step-free" into NoRoute("unknown_destination"), which is the
+        engine claiming a real station does not exist. The honest answer is
+        "disconnected".
 
         Returns:
             A new Network. This one is untouched — the filters are the reason
@@ -200,12 +244,13 @@ class Network:
         """
         return Network(
             stations=self._stations.values(),
-            edges=(edge for edge in self._all_edges() if edge.step_free),
+            edges=self._all_edges(),
             interchanges=(
                 interchange
                 for interchange in self._all_interchanges()
                 if interchange.step_free
             ),
+            step_free_platforms=self._step_free,
         )
 
     def without_lines(self, lines: Iterable[LineId]) -> "Network":
@@ -238,4 +283,5 @@ class Network:
                 if interchange.from_line not in excluded
                 and interchange.to_line not in excluded
             ),
+            step_free_platforms=self._step_free,
         )

@@ -27,6 +27,7 @@ from fixtures import (
     diamond,
     equally_fast_one_needs_a_change,
     fastest_differs_from_fewest_changes,
+    inaccessible_origin,
     one_way_pair,
     single_station,
     step_free_is_impossible,
@@ -36,7 +37,15 @@ from fixtures import (
     two_lines,
 )
 
-from tube_engine import Network, NoRoute, Objective, Route, RouteQuery, find_route
+from tube_engine import (
+    Leg,
+    Network,
+    NoRoute,
+    Objective,
+    Route,
+    RouteQuery,
+    find_route,
+)
 
 
 def route_between(
@@ -308,24 +317,67 @@ def test_avoiding_every_line_is_a_no_route_rather_than_a_crash() -> None:
     assert result == NoRoute("disconnected")
 
 
-def test_a_route_is_step_free_only_if_every_part_of_it_is() -> None:
-    # Reporting step-free is not the same as routing on it — routing on it is
-    # Phase 5. But a route that used one inaccessible hop must not claim to be
-    # step-free, because that is the error that strands someone.
-    from fixtures import ride, station
+def test_a_fastest_route_reports_step_free_honestly() -> None:
+    # step_free is reported for every objective, not only STEP_FREE, and it
+    # must not over-claim. The fastest route here ends on red at D, whose red
+    # platform is inaccessible — so the answer is a route that is not
+    # step-free, rather than no answer.
+    result = route_between(step_free_is_slower(), "A", "D")
 
-    from tube_engine import Network
+    assert isinstance(result, Route)
+    assert result.total_seconds == 120
+    assert result.step_free is False
 
-    accessible = Network(
-        stations=[station("A"), station("B")],
-        edges=ride("A", "B", "red", 60),
-        interchanges=[],
+
+def test_an_inaccessible_origin_has_no_step_free_route() -> None:
+    # The mirror of the destination case. A model that only checked where you
+    # were going would pass every test above and still tell someone who cannot
+    # reach the platform that their journey is step-free.
+    network = inaccessible_origin()
+
+    assert isinstance(route_between(network, "A", "B"), Route)
+    assert route_between(network, "A", "B", Objective.STEP_FREE) == NoRoute(
+        "disconnected"
     )
-    with_a_step = Network(
-        stations=[station("A"), station("B")],
-        edges=ride("A", "B", "red", 60, step_free=False),
-        interchanges=[],
+    # And the other way round, where boarding is possible but alighting is not.
+    assert route_between(network, "B", "A", Objective.STEP_FREE) == NoRoute(
+        "disconnected"
     )
 
-    assert route_between(accessible, "A", "B").step_free is True  # type: ignore[union-attr]
-    assert route_between(with_a_step, "A", "B").step_free is False  # type: ignore[union-attr]
+
+def test_the_legs_and_the_changes_account_for_the_whole_total() -> None:
+    """The invariant that caught Issue #1, kept as a guard.
+
+    Two of 6006 real routes reported a total their own legs could not account
+    for. The cause was in the seed — interchange costs that did not obey the
+    triangle inequality, so a chained walk undercut the direct one by a second
+    and the zero-length leg it produced was silently dropped here.
+
+    The data is fixed, so this can no longer happen. It is asserted anyway,
+    because a caller that cannot reproduce the number it was handed has been
+    given an answer it cannot trust.
+    """
+    network = fastest_differs_from_fewest_changes()
+
+    for objective in Objective:
+        result = route_between(network, "A", "D", objective)
+        assert isinstance(result, Route), objective
+
+        riding = sum(leg.seconds for leg in result.legs)
+        changing = sum(
+            _interchange_between(network, before, after)
+            for before, after in zip(result.legs, result.legs[1:], strict=False)
+        )
+
+        assert riding + changing == result.total_seconds, objective
+
+
+def _interchange_between(network: Network, before: Leg, after: Leg) -> int:
+    """The cost of the change joining two legs, looked up from the graph."""
+    station_id = before.stations[-1]
+    for interchange in network.interchanges_at(station_id):
+        if interchange.from_line == before.line and interchange.to_line == after.line:
+            return interchange.seconds
+    raise AssertionError(
+        f"no interchange at {station_id} from {before.line} to {after.line}"
+    )

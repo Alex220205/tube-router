@@ -37,6 +37,13 @@ WHAT'S NEW
     cost, which is what lets the search treat a change as an edge rather than
     as something that happens invisibly between edges.
 
+    Accessibility is deliberately absent from Station and Edge. It belongs to
+    a platform — a (station, line) pair — and Network holds it at that grain.
+    Phase 5 shipped it on both types, Phase 6 measured what that produced, and
+    removing it was the correction. A field the engine cannot answer honestly
+    is worse than no field, which docs/DECISIONS.md already recorded once over
+    LOG_LEVEL.
+
 CONSTRAINT
     engine/ imports nothing web-related and nothing database-related.
     Enforced by tests/test_imports.py.
@@ -68,16 +75,17 @@ class Station:
             here.
         lat: WGS84 latitude.
         lon: WGS84 longitude.
-        step_free: Whether the station itself is step-free. Note that this is
-            coarser than the truth — accessibility is really per platform per
-            line — so the finer answer lives on Edge and Interchange.
+
+    There is deliberately no step_free flag. Accessibility is a property of a
+    platform — Green Park is step-free on the Victoria line and not on the
+    Piccadilly — so a station-level answer would have to pick one of them and
+    be wrong about the other. Network holds it at the right grain instead.
     """
 
     id: StationId
     name: str
     lat: float
     lon: float
-    step_free: bool
 
 
 @dataclass(frozen=True)
@@ -96,14 +104,18 @@ class Edge:
         seconds: Journey time. Always positive — a zero-weight edge tells a
             search the journey is free, which is worse than a missing edge
             because it produces a confident wrong answer.
-        step_free: Whether this ride can be made step-free.
+
+    No step_free flag here either, and for a sharper reason than on Station:
+    riding is always step-free once you are aboard. You need no accessible
+    route at a station you stay on the train through, so a per-ride flag asks
+    a question with no answer. Treating one as "both ends accessible" left
+    123 of 754 real rides and fragmented the accessible network into pieces.
     """
 
     origin: StationId
     destination: StationId
     line: LineId
     seconds: int
-    step_free: bool
 
 
 @dataclass(frozen=True)
