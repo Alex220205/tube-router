@@ -1,0 +1,134 @@
+[
+  {
+    "id": "bakerloo",
+    "name": "Bakerloo",
+    "modeName": "tube",
+    "lineStatuses": [
+      {
+        "statusSeverity": 9,
+        "statusSeverityDescription": "Minor Delays",
+        "reason": "Bakerloo Line: Minor delays due to an train cancellations. "
+      }
+    ]
+  },
+  {
+    "id": "central",
+    "name": "Central",
+    "modeName": "tube",
+    "lineStatuses": [
+      {
+        "statusSeverity": 10,
+        "statusSeverityDescription": "Good Service",
+        "reason": null
+      }
+    ]
+  },
+  {
+    "id": "circle",
+    "name": "Circle",
+    "modeName": "tube",
+    "lineStatuses": [
+      {
+        "statusSeverity": 10,
+        "statusSeverityDescription": "Good Service",
+        "reason": null
+      }
+    ]
+  },
+  {
+    "id": "district",
+    "name": "District",
+    "modeName": "tube",
+    "lineStatuses": [
+      {
+        "statusSeverity": 10,
+        "statusSeverityDescription": "Good Service",
+        "reason": null
+      }
+    ]
+  },
+  {
+    "id": "hammersmith-city",
+    "name": "Hammersmith & City",
+    "modeName": "tube",
+    "lineStatuses": [
+      {
+        "statusSeverity": 10,
+        "statusSeverityDescription": "Good Service",
+        "reason": null
+      }
+    ]
+  },
+  {
+    "id": "jubilee",
+    "name": "Jubilee",
+    "modeName": "tube",
+    "lineStatuses": [
+      {
+        "statusSeverity": 10,
+        "statusSeverityDescription": "Good Service",
+        "reason": null
+      }
+    ]
+  },
+  {
+    "id": "metropolitan",
+    "name": "Metropolitan",
+    "modeName": "tube",
+    "lineStatuses": [
+      {
+        "statusSeverity": 6,
+        "statusSeverityDescription": "Severe Delays",
+        "reason": "Metropolitan Line: Severe delays between Harrow-on-the-Hill and Uxbridge due to an earlier signal failure at Harrow-on-the-Hill. London Buses are accepting tickets via any reasonable route. GOOD SERVICE on the rest of the line.\r\n "
+      }
+    ]
+  },
+  {
+    "id": "northern",
+    "name": "Northern",
+    "modeName": "tube",
+    "lineStatuses": [
+      {
+        "statusSeverity": 10,
+        "statusSeverityDescription": "Good Service",
+        "reason": null
+      }
+    ]
+  },
+  {
+    "id": "piccadilly",
+    "name": "Piccadilly",
+    "modeName": "tube",
+    "lineStatuses": [
+      {
+        "statusSeverity": 6,
+        "statusSeverityDescription": "Severe Delays",
+        "reason": "Piccadilly Line: Severe delays due to an earlier signal failure at Turnpike Lane. London Buses are accepting tickets via any reasonable route. "
+      }
+    ]
+  },
+  {
+    "id": "victoria",
+    "name": "Victoria",
+    "modeName": "tube",
+    "lineStatuses": [
+      {
+        "statusSeverity": 10,
+        "statusSeverityDescription": "Good Service",
+        "reason": null
+      }
+    ]
+  },
+  {
+    "id": "waterloo-city",
+    "name": "Waterloo & City",
+    "modeName": "tube",
+    "lineStatuses": [
+      {
+        "statusSeverity": 10,
+        "statusSeverityDescription": "Good Service",
+        "reason": null
+      }
+    ]
+  }
+]

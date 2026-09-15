@@ -245,6 +245,20 @@ class TfLClient:
         """
         return list(await self._get_json("/Line/Mode/tube"))
 
+    async def line_status(self) -> list[dict[str, Any]]:
+        """Live status for every tube line.
+
+        The only endpoint here that is polled rather than read once, so it is
+        also the only one whose failures are routine: TfL goes down, and the
+        service carries on serving the last status it knew. The throttle, the
+        429 handling and the retry are the ones every other call already uses.
+
+        Returns:
+            Eleven line objects, each carrying lineStatuses with a
+            statusSeverity, its description, and a reason where there is one.
+        """
+        return list(await self._get_json("/Line/Mode/tube/Status"))
+
     async def route_sequence(
         self, line_id: str, direction: Direction
     ) -> dict[str, Any]:
