@@ -27,9 +27,10 @@ import json
 import os
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import cache
 from app.models import Interchange as InterchangeRow
 from app.models import Line as LineRow
 from app.models import Segment, Station, StationLine, TransportMode
@@ -305,3 +306,85 @@ async def test_rows_survive_a_round_trip_through_json(db: AsyncSession) -> None:
     assert len(restored) == len(direct)
     assert restored.step_free_at("A", "red") is True
     assert restored.station("A").lat == pytest.approx(51.5152)
+
+
+async def test_a_bumped_generation_is_noticed_without_a_restart(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #9, reproduced and then fixed.
+
+    Phase 6 claimed the seed's cache invalidation stopped "it works after a
+    restart" behaviour. It did not: get_network returned the in-process graph
+    without ever consulting Redis again, so clearing the row cache helped only
+    a process that had not built its graph yet.
+
+    Demonstrated at the time by changing a segment to 9999 seconds, clearing
+    Redis, and watching a warm API keep answering 120. This is that, in a test.
+    """
+    red = await build_line(db, "red")
+    a = await build_station(db, "A", -0.1, 51.5)
+    b = await build_station(db, "B", -0.2, 51.6)
+    await connect(db, red, a, b, 120)
+
+    generation = 1
+    monkeypatch.setattr(cache, "read_generation", lambda: _returns(generation))
+    first = await graph_loader.get_network(db)
+    assert (
+        find_route(first, RouteQuery(origin="A", destination="B")).total_seconds == 120
+    )
+
+    # The data changes, exactly as a reseed would change it.
+    await db.execute(update(Segment).values(seconds=9999))
+    generation = 2
+    # Past the check interval, so the next call actually asks.
+    monkeypatch.setattr(graph_loader, "_checked_at", 0.0)
+
+    second = await graph_loader.get_network(db)
+
+    assert second is not first
+    assert (
+        find_route(second, RouteQuery(origin="A", destination="B")).total_seconds
+        == 9999
+    )
+
+
+async def test_an_unchanged_generation_does_not_rebuild(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The counterweight. A check that rebuilt whenever it ran would "fix" the
+    # staleness by throwing the cache away, which is the Phase 6 fault in the
+    # opposite direction.
+    red = await build_line(db, "red")
+    a = await build_station(db, "A", -0.1, 51.5)
+    b = await build_station(db, "B", -0.2, 51.6)
+    await connect(db, red, a, b, 120)
+
+    monkeypatch.setattr(cache, "read_generation", lambda: _returns(7))
+    first = await graph_loader.get_network(db)
+    monkeypatch.setattr(graph_loader, "_checked_at", 0.0)
+
+    assert await graph_loader.get_network(db) is first
+
+
+async def test_an_unreachable_redis_keeps_the_graph_it_has(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # read_generation returns None when Redis cannot be reached, and None is
+    # not a mismatch. Treating it as one would rebuild the whole graph on every
+    # request for as long as Redis was down - a degraded dependency turned into
+    # an outage, which is precisely what core/cache.py exists to prevent.
+    red = await build_line(db, "red")
+    a = await build_station(db, "A", -0.1, 51.5)
+    b = await build_station(db, "B", -0.2, 51.6)
+    await connect(db, red, a, b, 120)
+
+    monkeypatch.setattr(cache, "read_generation", lambda: _returns(None))
+    first = await graph_loader.get_network(db)
+    monkeypatch.setattr(graph_loader, "_checked_at", 0.0)
+
+    assert await graph_loader.get_network(db) is first
+
+
+async def _returns(value: int | None) -> int | None:
+    """An already-answered coroutine, for monkeypatching an async function."""
+    return value

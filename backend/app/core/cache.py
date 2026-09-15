@@ -126,3 +126,51 @@ async def close() -> None:
     if _client is not None:
         await _client.aclose()
         _client = None
+
+
+# --- the generation key ------------------------------------------------------
+#
+# One integer that says "the graph you built is out of date". The seed bumps
+# it; graph_loader compares it against the generation its current graph was
+# built at. Phase 6 shipped without this and the seed's invalidation did
+# nothing for a running process - see docs/ISSUES.md #9.
+
+GENERATION_KEY = "tube-router:generation"
+
+
+async def read_generation() -> int | None:
+    """The current graph generation.
+
+    Returns:
+        The integer, 0 if the key has never been set, or None if Redis could
+        not be reached. None and 0 are deliberately different: "no answer" must
+        not be mistaken for "generation zero", or an unreachable Redis would
+        look like a signal to rebuild on every single request.
+    """
+    try:
+        raw = await get_client().get(GENERATION_KEY)
+    except Exception:
+        return None
+    if raw is None:
+        return 0
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        # Something else owns this key, or wrote a non-integer into it. Treat
+        # it as unknown rather than crashing a route request over it.
+        return None
+
+
+async def bump_generation() -> int | None:
+    """Mark every built graph stale. Called by the seed after it commits.
+
+    Returns:
+        The new generation, or None if Redis could not be reached.
+
+    INCR rather than read-modify-write, so two seeds running at once cannot
+    produce the same number and leave one of them invisible.
+    """
+    try:
+        return int(await get_client().incr(GENERATION_KEY))
+    except Exception:
+        return None
