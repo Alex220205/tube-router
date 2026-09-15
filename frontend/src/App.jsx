@@ -22,11 +22,13 @@
 
 import { useEffect, useState } from 'react'
 import { fetchHealth } from './api'
+import LineStatus from './components/LineStatus'
 import ObjectiveToggle, { OBJECTIVES } from './components/ObjectiveToggle'
 import RoutePanel from './components/RoutePanel'
 import StationSearch from './components/StationSearch'
 import TubeMap from './components/TubeMap'
 import { useNetwork } from './hooks/useNetwork'
+import { useLiveStatus } from './hooks/useLiveStatus'
 import { useRoute } from './hooks/useRoute'
 
 // Three distinct outcomes, and the difference between the last two matters:
@@ -55,6 +57,10 @@ export default function App() {
     destination,
     objective,
   )
+
+  // Opened once and left open. The first message is the current picture, so
+  // there is nothing to fetch alongside it - see hooks/useLiveStatus.js.
+  const status = useLiveStatus()
 
   useEffect(() => {
     let cancelled = false
@@ -124,6 +130,16 @@ export default function App() {
               Could not load the network: {networkError}
             </p>
           )}
+        </div>
+
+        {/* Bottom right, opposite the health card. It is about the railway
+            rather than about this service, and the two being told apart at a
+            glance is the point of them not sharing a corner. */}
+        <div className="pointer-events-auto absolute right-4 bottom-4 max-w-xs rounded-lg bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
+          <h2 className="mb-1 font-medium tracking-wide text-gray-500 uppercase">
+            Line status
+          </h2>
+          <LineStatus status={status} lines={network?.lines} />
         </div>
 
         {/* Bottom left, small. It proves the stack is connected, which is
