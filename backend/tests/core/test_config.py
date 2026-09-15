@@ -11,7 +11,7 @@ WHY THIS EXISTS
 
     Nothing failed for a week. Every test sets the environment directly and
     Compose injects it, so the .env path is only exercised by a human running
-    a command by hand — and it surfaced as an unhelpful
+    a command by hand - and it surfaced as an unhelpful
     "database_url Field required" in the middle of an Alembic traceback.
 
 NO 2021 EQUIVALENT

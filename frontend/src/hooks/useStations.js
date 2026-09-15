@@ -4,8 +4,8 @@
  * WHY THIS EXISTS
  *     Keeps the fetching, the debounce and the cancellation out of the
  *     component, so StationSearch is about rendering and this is about
- *     asking. It also means the awkward part — what happens when answers
- *     come back out of order — is testable without rendering anything.
+ *     asking. It also means the awkward part - what happens when answers
+ *     come back out of order - is testable without rendering anything.
  *
  * NO 2021 EQUIVALENT
  *     The old project had no client and no server. The Tkinter window read
@@ -18,7 +18,7 @@
  *     Debouncing, so typing "victoria" is one request rather than eight.
  *
  *     Cancellation, which matters more. Without it a slow response for "o"
- *     can land after a fast one for "oxford" and overwrite it — the user sees
+ *     can land after a fast one for "oxford" and overwrite it - the user sees
  *     results for something they finished typing a second ago, and nothing
  *     looks broken enough to report.
  */

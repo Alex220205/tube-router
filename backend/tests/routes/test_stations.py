@@ -26,7 +26,7 @@ from app.models import Line, Station, StationLine, TransportMode
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("TEST_DATABASE_URL"),
-    reason="TEST_DATABASE_URL is unset — these need a live Postgres with PostGIS",
+    reason="TEST_DATABASE_URL is unset - these need a live Postgres with PostGIS",
 )
 
 

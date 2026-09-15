@@ -16,7 +16,7 @@ WHAT THE 2021 VERSION DID
 
 WHAT CHANGED AND WHY
     A handler validates, calls one function in services/, and shapes the
-    reply. No SQL here, and no reasoning either — both live in
+    reply. No SQL here, and no reasoning either - both live in
     services/stations.py, where they can be exercised without HTTP.
 """
 
@@ -56,7 +56,7 @@ async def search_stations(
 
     Returns:
         Matching stations, ordered by name. An empty list when nothing
-        matches — not a 404. "No stations called zzz" is a successful answer
+        matches - not a 404. "No stations called zzz" is a successful answer
         to a reasonable question.
     """
     try:
@@ -88,7 +88,7 @@ async def get_station(station_id: int, session: SessionDep) -> StationRead:
     """
     try:
         # Guard before touching the database. A negative id cannot match
-        # anything, so asking is wasted work and a 404 would misdescribe it —
+        # anything, so asking is wasted work and a 404 would misdescribe it -
         # the request is malformed, not pointing at something absent.
         if station_id <= 0:
             raise HTTPException(
@@ -104,7 +104,7 @@ async def get_station(station_id: int, session: SessionDep) -> StationRead:
         return StationRead(**station)
     except HTTPException:
         # First, or the handler below swallows the 404 and reports it as a
-        # 500 — which sends whoever is debugging it to entirely the wrong
+        # 500 - which sends whoever is debugging it to entirely the wrong
         # place.
         raise
     except OperationalError as exc:

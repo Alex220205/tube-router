@@ -15,7 +15,7 @@ WHY THIS EXISTS
 
 NO 2021 EQUIVALENT
     There was no cache. The old project kept live line status in a persistent
-    SQLite table and deleted every row on launch to reinsert it — a cache
+    SQLite table and deleted every row on launch to reinsert it - a cache
     wearing a table's clothing, in the one place a cache did not belong.
 
 CONSTRAINT
@@ -36,7 +36,7 @@ def _reset_client() -> None:
 
 async def test_an_unreachable_redis_reads_as_a_miss() -> None:
     # The property every endpoint depends on. If this raised instead, the
-    # service would stop working the moment Redis did — which is strictly
+    # service would stop working the moment Redis did - which is strictly
     # worse than having no cache at all.
     assert await cache.read_json("anything") is None
 
@@ -70,7 +70,7 @@ async def test_a_payload_that_cannot_be_serialised_raises(
 
     An unreachable Redis is an operational condition the caller recovers from.
     A value that cannot be JSON-encoded is a bug in the calling code, and
-    hiding it would mean the cache silently never worked — the write appears
+    hiding it would mean the cache silently never worked - the write appears
     to succeed, every read misses, and the only symptom is that it is slow.
     """
 

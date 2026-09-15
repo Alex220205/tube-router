@@ -11,8 +11,8 @@ WHAT THE 2021 VERSION DID
     How:    There was no join table. Line membership was implied by which
             connection rows happened to exist.
     Wrong:  "Which lines serve this station" was not a query you could write.
-            The relationship was in the data all along — the audit found 486
-            station rows for 346 stations, one per (station, line) — but
+            The relationship was in the data all along - the audit found 486
+            station rows for 346 stations, one per (station, line) - but
             undeclared, so it had to be rediscovered by string deduplication
             on every search.
 
@@ -55,7 +55,7 @@ class StationLine(Base):
     # with two. Defaults to false: absence of evidence is not step-free.
     #
     # server_default as well as the Python default, so the guarantee survives
-    # a bulk insert that bypasses the ORM — which is exactly what a seed
+    # a bulk insert that bypasses the ORM - which is exactly what a seed
     # script tends to do. tests/models/test_schema.py inserts via raw SQL to
     # prove that path.
     step_free_to_platform: Mapped[bool] = mapped_column(

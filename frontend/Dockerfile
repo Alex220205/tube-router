@@ -21,7 +21,7 @@ RUN npm ci
 
 COPY frontend/ ./
 
-# Vite substitutes this at BUILD time, not at run time — it ends up inside
+# Vite substitutes this at BUILD time, not at run time - it ends up inside
 # the bundle as a literal. That means the image is specific to the API URL it
 # was built against, which is why it is an ARG rather than a runtime
 # environment variable that would silently do nothing.

@@ -20,7 +20,7 @@ NO 2021 EQUIVALENT
     There were no tests of any kind.
 
 CONSTRAINT
-    These need a real Postgres with PostGIS — they assert what the database
+    These need a real Postgres with PostGIS - they assert what the database
     does, which cannot be faked with a stub. They skip when TEST_DATABASE_URL
     is unset so the rest of the suite still runs with nothing installed.
 """
@@ -47,7 +47,7 @@ from app.models import (
 # conftest does not make its names importable.
 pytestmark = pytest.mark.skipif(
     not os.environ.get("TEST_DATABASE_URL"),
-    reason="TEST_DATABASE_URL is unset — these need a live Postgres with PostGIS",
+    reason="TEST_DATABASE_URL is unset - these need a live Postgres with PostGIS",
 )
 
 
@@ -71,7 +71,7 @@ async def test_postgis_extension_is_installed(db: AsyncSession) -> None:
 async def test_a_geography_point_round_trips(db: AsyncSession) -> None:
     # Oxford Circus. Written as WGS84 lon/lat and read back as lon/lat, which
     # is the pair of conversions a station row will go through on every seed
-    # and every query. 4326 is the SRID for WGS84 — the system GPS uses.
+    # and every query. 4326 is the SRID for WGS84 - the system GPS uses.
     result = await db.execute(
         text(
             "SELECT ST_X(p::geometry), ST_Y(p::geometry) FROM "
@@ -203,7 +203,7 @@ async def test_segment_pointing_at_a_missing_station_is_rejected(
 async def test_segment_with_a_non_positive_duration_is_rejected(
     db: AsyncSession, seconds: int
 ) -> None:
-    # The audit found 12 links stored as zero minutes — Embankment to Charing
+    # The audit found 12 links stored as zero minutes - Embankment to Charing
     # Cross on both the Bakerloo and the Northern among them. A zero-weight
     # edge tells the router the journey is free, which is worse than a missing
     # edge because it produces a confident wrong answer.
@@ -263,7 +263,7 @@ async def test_duplicate_segment_on_the_same_line_is_rejected(db: AsyncSession) 
 async def test_the_same_link_on_two_lines_is_allowed(db: AsyncSession) -> None:
     # The mirror of the test above, and the reason the unique constraint
     # includes line_id. Shepherd's Bush Market to Wood Lane is a real link on
-    # both the Circle and the Hammersmith & City — the audit found it twice,
+    # both the Circle and the Hammersmith & City - the audit found it twice,
     # once per line. Uniqueness on (origin, destination) alone would make the
     # real network unrepresentable.
     circle = await a_line(db, code="circle")
@@ -398,7 +398,7 @@ async def test_interchange_with_a_non_positive_duration_is_rejected(
 
 async def test_interchange_is_directional(db: AsyncSession) -> None:
     # Northern to Central at Bank is not necessarily the same walk as Central
-    # to Northern — different platforms, sometimes a different passage. Both
+    # to Northern - different platforms, sometimes a different passage. Both
     # directions must be storable, with different costs.
     station = await a_station(db, naptan_id="940GZZLUBNK")
     northern = await a_line(db, code="northern")

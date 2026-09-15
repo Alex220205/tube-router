@@ -16,7 +16,7 @@ dependencies = [
     "pydantic-settings>=2.6",
     # Schema history in version control. Phase 1.
     "alembic>=1.14",
-    # PostGIS column types for SQLAlchemy — geography(Point, 4326) has no
+    # PostGIS column types for SQLAlchemy - geography(Point, 4326) has no
     # equivalent in core SQLAlchemy. Phase 1.
     "geoalchemy2>=0.16",
     # Async HTTP, for talking to TfL. Phase 2 seeds from it; Phase 7 polls it.

@@ -3,14 +3,14 @@ Alembic's entry point: how migrations find the database and what they compare
 against.
 
 WHY THIS EXISTS
-    Alembic needs two things — a connection and a description of the intended
+    Alembic needs two things - a connection and a description of the intended
     schema. This file supplies both, and it takes the connection from the
     same place the running application does rather than from alembic.ini.
 
 NO 2021 EQUIVALENT
     The old project had no migrations. The schema was created by hand in a
     tool, existed only inside train_stations.db, and changed by someone
-    running ad-hoc SQL — several such statements survive commented out at the
+    running ad-hoc SQL - several such statements survive commented out at the
     bottom of database[works].py, lines 972-976, including an UPDATE that
     repairs a single connection's line_id. There was no record of what the
     schema was, when it changed, or why.
@@ -39,7 +39,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.core.config import get_settings
 
-# Imports the models package, not just Base — which is what guarantees every
+# Imports the models package, not just Base - which is what guarantees every
 # model module has been executed and every table is registered on the
 # metadata. See app/models/__init__.py; a model whose module is never imported
 # is silently absent from autogenerate rather than an error.
@@ -67,7 +67,7 @@ def include_object(
     Args:
         obj: The schema object being considered.
         name: Its name, if it has one.
-        type_: What kind of object it is — "table", "column" and so on.
+        type_: What kind of object it is - "table", "column" and so on.
         reflected: Whether it came from the database rather than the models.
         compare_to: The corresponding object on the other side, if any.
 

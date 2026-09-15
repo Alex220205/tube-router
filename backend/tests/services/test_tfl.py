@@ -3,7 +3,7 @@ Tests for the TfL client.
 
 WHY THIS EXISTS
     The client is the only part of the seed that can fail for reasons outside
-    this project — a timeout, a 503, a redirect, a body that is not JSON. The
+    this project - a timeout, a 503, a redirect, a body that is not JSON. The
     interesting behaviour is entirely in how it reacts to those, and none of
     it is observable by calling the real API and hoping for the best.
 
@@ -114,7 +114,7 @@ async def test_app_key_is_sent_when_set() -> None:
 
 async def test_app_key_is_omitted_entirely_when_blank() -> None:
     # Not sent as an empty string: TfL rejects app_key= as a malformed key,
-    # which would break the project for anyone who has not got one — and
+    # which would break the project for anyone who has not got one - and
     # every endpoint the seed uses answers fine without.
     seen: list[str] = []
 
@@ -165,7 +165,7 @@ async def test_a_client_error_is_not_retried() -> None:
 
 async def test_rate_limiting_is_retried_even_though_it_is_a_4xx() -> None:
     # The exception to "4xx will not change on a retry". A 429 does not mean
-    # the request was wrong, it means it was too soon — waiting is the entire
+    # the request was wrong, it means it was too soon - waiting is the entire
     # fix. This was found by running the real seed: TfL allows 50 requests a
     # minute without a key and a full run makes about ninety, so it died a
     # third of the way through on hammersmith-city.
@@ -325,7 +325,7 @@ async def test_station_data_reads_the_two_csvs_it_needs() -> None:
 
 async def test_station_data_strips_the_byte_order_mark() -> None:
     # TfL writes a BOM. Without utf-8-sig the first column name comes back as
-    # "﻿PlatformUniqueId" and every lookup of it returns None — which
+    # "﻿PlatformUniqueId" and every lookup of it returns None - which
     # presents as missing data rather than as an encoding problem, and is
     # therefore the kind of bug that gets debugged in the wrong place.
     payload = _zip_of(

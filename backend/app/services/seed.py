@@ -4,7 +4,7 @@ Transforms TfL payloads into rows ready for the database.
 WHY THIS EXISTS
     Every function here is pure: a payload in, plain dataclasses out, no
     database and no network. That is the whole point of the split from
-    tfl.py — it means the awkward parts of this phase (branch handling, the
+    tfl.py - it means the awkward parts of this phase (branch handling, the
     cumulative timetable arithmetic, the zero-duration floor, TfL's mixed-case
     booleans) are unit-testable against a saved fixture in milliseconds.
 
@@ -39,7 +39,7 @@ from .line_colours import LINE_COLOURS, UNKNOWN_LINE_COLOUR
 
 # TfL's timetables are in whole minutes, so two adjacent stations can report
 # the same cumulative arrival and the difference is zero. CHECK (seconds > 0)
-# rejects that, correctly — a free hop is exactly the defect the audit found
+# rejects that, correctly - a free hop is exactly the defect the audit found
 # twelve of. One minute is the smallest honest value the source can express.
 MIN_SEGMENT_SECONDS = 60
 
@@ -167,7 +167,7 @@ def stations_from_stop_points(
     """Collect every station across every line, deduplicated by NaPTAN id.
 
     A station on three lines appears in three responses. The 2021 database
-    kept all three as separate rows — 486 rows for 346 stations — which is
+    kept all three as separate rows - 486 rows for 346 stations - which is
     why its graph builder had to deduplicate by name string on every search.
     Here NaPTAN is the identity and the duplicates collapse.
 
@@ -262,7 +262,7 @@ def step_free_by_station_line(
     Two columns count, not one. DesignatedLevelAccessPoint marks a permanent
     level boarding point; LevelAccessByManualRamp marks one where staff
     deploy a ramp. TfL's own journey planner treats both as step-free, and
-    they are nearly disjoint in the data — reading only the first drops
+    they are nearly disjoint in the data - reading only the first drops
     roughly half the accessible platforms in the network and leaves the
     Central and Bakerloo lines with no step-free stations at all, which is
     not true of the real railway.
@@ -332,7 +332,7 @@ def durations_from_timetable(
     timeToArrival is cumulative minutes from the origin, so the time between
     two adjacent stations is the difference between consecutive values. The
     first entry is measured from the origin the timetable was requested for,
-    which is why that has to be passed in — it does not appear in the
+    which is why that has to be passed in - it does not appear in the
     intervals.
 
     Args:
@@ -371,7 +371,7 @@ def segments_from_sequences(
     """Turn ordered stop sequences into directional segment rows.
 
     Consecutive stops *within one stopPointSequence* are adjacent. Stops in
-    different sequences are on different branches and are not adjacent —
+    different sequences are on different branches and are not adjacent -
     joining across them would invent track that does not exist, which is the
     mirror image of the 2021 problem where real track was missing and two
     Central line branches ended up unreachable.
@@ -384,7 +384,7 @@ def segments_from_sequences(
     Returns:
         The segment rows, and the number whose duration had to be floored or
         defaulted. The count is returned rather than logged so the caller can
-        report it — a silent floor is how the 2021 zeroes survived.
+        report it - a silent floor is how the 2021 zeroes survived.
     """
     rows: dict[tuple[str, str], SegmentRow] = {}
     adjusted = 0
@@ -483,7 +483,7 @@ def _shortest_walks(
 
     TfL publishes the same corridor whole and in halves. At Green Park the
     direct jubilee-to-victoria walk is 380 m, and jubilee to piccadilly to
-    victoria is 220 + 160 — the same 380 m. Converting each to whole seconds
+    victoria is 220 + 160 - the same 380 m. Converting each to whole seconds
     independently gives 317 for the direct walk and 183 + 133 = 316 for the
     decomposed one, so the router could save a second by walking through a
     platform it never boards. Sum-of-rounded against rounded-of-sum.
@@ -501,7 +501,7 @@ def _shortest_walks(
         distances: Measured platform-to-platform distances in metres.
 
     Returns:
-        Ordered line pair to seconds. Directional throughout — the walk one
+        Ordered line pair to seconds. Directional throughout - the walk one
         way is not the walk back.
     """
     cost: dict[tuple[str, str], int] = {}
@@ -538,8 +538,8 @@ def interchanges_from_station_lines(
 ) -> list[InterchangeRow]:
     """Build an interchange for every ordered pair of lines at a station.
 
-    The pairs are derived — if two lines call at a station you can change
-    between them — but the *cost* is not, which is why these are stored rows
+    The pairs are derived - if two lines call at a station you can change
+    between them - but the *cost* is not, which is why these are stored rows
     rather than something computed at query time. A measured distance is used
     where TfL has one; everything else gets a stated default rather than a
     number that looks calculated but is not.
@@ -576,7 +576,7 @@ def interchanges_from_station_lines(
                         # Two sources, and the order matters. A measured
                         # distance in StepFreeIntechangeInfo.csv is TfL
                         # stating the change is step-free, and it is
-                        # authoritative where it exists — but it covers only
+                        # authoritative where it exists - but it covers only
                         # a few hundred pairs network-wide.
                         #
                         # Otherwise it is inferred: both platforms being

@@ -14,7 +14,7 @@ WHAT'S NEW
     COMMON_RESPONSES lives here rather than being redeclared in every route
     module. Four copies of the same dict is four places to forget when a
     status is added, and the generated OpenAPI page is the thing that
-    suffers — silently.
+    suffers - silently.
 """
 
 # Merged into every route's `responses`, so the generated docs list what a

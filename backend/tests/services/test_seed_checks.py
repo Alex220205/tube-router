@@ -4,7 +4,7 @@ Tests for the post-seed checks.
 WHY THIS EXISTS
     A check that cannot fail is worse than no check, because it is trusted.
     Every test here builds a database that is deliberately broken in one
-    specific way and asserts the corresponding check notices — and then
+    specific way and asserts the corresponding check notices - and then
     builds the fixed version and asserts it stops complaining.
 
     The connectivity check earns this most. It passed on the first real seed
@@ -30,7 +30,7 @@ from app.services import seed_checks
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("TEST_DATABASE_URL"),
-    reason="TEST_DATABASE_URL is unset — these need a live Postgres with PostGIS",
+    reason="TEST_DATABASE_URL is unset - these need a live Postgres with PostGIS",
 )
 
 
@@ -167,7 +167,7 @@ async def test_a_line_with_no_track_is_caught(db: AsyncSession) -> None:
 
 async def test_a_station_serving_no_line_is_caught(db: AsyncSession) -> None:
     # 120 of the 486 rows in the 2021 stations table had no connections at
-    # all — the entire Overground import.
+    # all - the entire Overground import.
     line = await build_line(db, "victoria")
     a, b = [await build_station(db, n) for n in ("A", "B")]
     await build_station(db, "ORPHAN")

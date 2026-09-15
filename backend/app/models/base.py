@@ -5,7 +5,7 @@ applied to every constraint.
 WHY THIS EXISTS
     One place that defines what "a model in this project" means. Alembic's
     env.py points target_metadata at Base.metadata, so a class that does not
-    inherit from this is invisible to autogenerate — which produces an empty
+    inherit from this is invisible to autogenerate - which produces an empty
     migration rather than an error, and is the single most common way an
     Alembic setup silently does nothing.
 
@@ -46,7 +46,7 @@ from sqlalchemy.orm import DeclarativeBase
 #   pk  primary key           pk_stations
 #
 # `ck` interpolates constraint_name, so every CheckConstraint still has to be
-# given one — an unnamed check would render as `ck_segments_` and collide with
+# given one - an unnamed check would render as `ck_segments_` and collide with
 # the next unnamed check on the same table.
 NAMING_CONVENTION = {
     "ix": "ix_%(table_name)s_%(column_0_N_name)s",

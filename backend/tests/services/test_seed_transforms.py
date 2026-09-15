@@ -9,7 +9,7 @@ WHY THIS EXISTS
 
     That is the point of separating them from tfl.py. In 2021 the fetch, the
     transform and the write were one function, so there was no point at which
-    a value could be inspected before it was stored — and docs/AUDIT.md
+    a value could be inspected before it was stored - and docs/AUDIT.md
     records what got stored: 12 zero-minute links, two disconnected Central
     line branches, no coordinates at all.
 
@@ -353,7 +353,7 @@ def test_consecutive_stops_become_directional_segments() -> None:
 
 def test_segments_are_never_joined_across_branches() -> None:
     # Two sequences are two branches. Joining the last stop of one to the
-    # first of the next would invent track that does not exist — the mirror
+    # first of the next would invent track that does not exist - the mirror
     # of the 2021 fault, where real track was missing and two Central line
     # branches became unreachable.
     payload = {
@@ -373,7 +373,7 @@ def test_segments_are_never_joined_across_branches() -> None:
 def test_a_zero_length_gap_is_floored_and_counted() -> None:
     # TfL's whole-minute timetables make this inevitable. A zero-weight edge
     # tells the router the hop is free, which is worse than a missing edge
-    # because it produces a confident wrong answer — and it is exactly the
+    # because it produces a confident wrong answer - and it is exactly the
     # defect the audit found twelve of. The count is returned so the seed can
     # report it rather than swallow it.
     payload = {"stopPointSequences": [{"stopPoint": [{"id": "A"}, {"id": "B"}]}]}
@@ -504,7 +504,7 @@ def test_an_unmeasured_change_between_accessible_platforms_is_step_free() -> Non
     # Inferred, not measured: both platforms are step-free, so the change can
     # normally be made via the lifts. TfL measures only a few hundred pairs
     # network-wide, and requiring the measurement marked 6 of 312 changes
-    # step-free — which left the step-free network in fragments and made the
+    # step-free - which left the step-free network in fragments and made the
     # objective answer "no route" for essentially every real journey.
     station_lines = [
         StationLineRow("S", "victoria", True),
@@ -552,7 +552,7 @@ def test_a_chained_walk_never_undercuts_the_direct_one() -> None:
     """The real Green Park numbers, and the bug they caused.
 
     TfL measures the same corridor whole and in halves: jubilee to victoria is
-    380 m, and jubilee to piccadilly to victoria is 220 + 160 — the same 380 m.
+    380 m, and jubilee to piccadilly to victoria is 220 + 160 - the same 380 m.
     Rounding each to whole seconds independently gives 317 direct against
     183 + 133 = 316 decomposed, so the router could save a second by walking
     through a platform it never boards.
@@ -580,7 +580,7 @@ def test_a_chained_walk_never_undercuts_the_direct_one() -> None:
     # 317 direct would be beatable by 183 + 133. Closed to the shorter one.
     assert seconds[("jubilee", "victoria")] == 316
     assert seconds[("victoria", "jubilee")] == 316
-    # The halves are untouched — nothing shorter runs through them.
+    # The halves are untouched - nothing shorter runs through them.
     assert seconds[("jubilee", "piccadilly")] == 183
     assert seconds[("piccadilly", "victoria")] == 133
 
@@ -649,7 +649,7 @@ def test_station_line_membership_comes_from_the_sequences() -> None:
         ("B", "central"),
         ("C", "central"),
     }
-    # B is on two lines — one station, two rows. The relationship the 2021
+    # B is on two lines - one station, two rows. The relationship the 2021
     # schema expressed by duplicating the station instead.
     b_central = next(r for r in rows if r.naptan_id == "B" and r.line_code == "central")
     b_victoria = next(

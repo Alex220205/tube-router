@@ -17,7 +17,7 @@ WHAT THE 2021 VERSION DID
     Wrong:  Three separate problems.
             1. The builder needed a live SQLite connection, so routing could
                not be exercised without one. None of it was ever tested.
-            2. DisplayStationdatabase() — a full SELECT * FROM stations — was
+            2. DisplayStationdatabase() - a full SELECT * FROM stations - was
                called inside the innermost loop at lines 509 and 513, so
                building one graph ran tens of thousands of full table scans.
                It ran on every search.
@@ -29,7 +29,7 @@ WHAT CHANGED AND WHY
     Network takes stations, edges and interchanges as plain objects and does
     not know where they came from. Loading them is
     backend/app/services/graph_loader.py's job in Phase 6, which fixes (1)
-    and (2) — the data arrives once, already assembled.
+    and (2) - the data arrives once, already assembled.
 
     Nothing here mutates. Adjacency is built in __init__ and never written to
     again, lookups return tuples rather than the internal lists, and the
@@ -38,7 +38,7 @@ WHAT CHANGED AND WHY
 
     step_free_only() and without_lines() return a new Network rather than
     editing this one. That is what makes them safe to apply per request in
-    Phase 6 — a filter that edited in place would make the graph depend on
+    Phase 6 - a filter that edited in place would make the graph depend on
     which query ran last, which is bug (3) with a new spelling.
 
 WHAT'S NEW
@@ -75,7 +75,7 @@ class Network:
 
         Args:
             stations: Every station. Later duplicates of an id overwrite
-                earlier ones rather than erroring — the caller is responsible
+                earlier ones rather than erroring - the caller is responsible
                 for its own uniqueness, and the schema already enforces it.
             edges: Every directional ride.
             interchanges: Every directional change.
@@ -83,7 +83,7 @@ class Network:
                 reached step-free from the street. Defaults to none, so a
                 network built without it answers "not step-free" to
                 everything rather than claiming access it was never told
-                about — the safe direction, since the failure that strands
+                about - the safe direction, since the failure that strands
                 someone is claiming access that is not there.
         """
         self._stations: dict[StationId, Station] = {s.id: s for s in stations}
@@ -102,7 +102,7 @@ class Network:
             outgoing.setdefault(edge.origin, []).append(edge)
             lines.setdefault(edge.origin, set()).add(edge.line)
             # A station you can only arrive at still serves that line, and
-            # the search seeds itself from lines_at(origin) — so a terminus
+            # the search seeds itself from lines_at(origin) - so a terminus
             # has to be listed too.
             lines.setdefault(edge.destination, set()).add(edge.line)
 
@@ -138,7 +138,7 @@ class Network:
 
         Raises:
             KeyError: If no such station exists. Raising rather than returning
-                None because callers here have already checked membership —
+                None because callers here have already checked membership -
                 find_route returns NoRoute("unknown_origin") long before this
                 is reached, so a KeyError means a genuine bug rather than
                 ordinary missing input.
@@ -153,7 +153,7 @@ class Network:
 
         Returns:
             The edges, as a tuple. Empty for a terminus or an unknown station
-            — an empty result is the correct answer to "what leaves from
+            - an empty result is the correct answer to "what leaves from
             here", so this does not raise.
         """
         return self._edges.get(station_id, ())
@@ -226,7 +226,7 @@ class Network:
         **Rides are kept, all of them.** You need no accessible route at a
         station you stay on the train through, so filtering rides by the
         accessibility of their endpoints removes journeys that are perfectly
-        possible — it left 123 of 754 real rides and broke the accessible
+        possible - it left 123 of 754 real rides and broke the accessible
         network into fragments. What a step-free journey actually requires is
         an accessible origin platform, accessible changes, and an accessible
         destination platform. The changes are filtered here; the two ends are
@@ -238,7 +238,7 @@ class Network:
         "disconnected".
 
         Returns:
-            A new Network. This one is untouched — the filters are the reason
+            A new Network. This one is untouched - the filters are the reason
             immutability was built in Phase 4, since a filter that edited in
             place would make the graph depend on which query ran last.
         """
@@ -263,7 +263,7 @@ class Network:
 
         Args:
             lines: Line ids to remove. Unknown ids are ignored rather than
-                raising — "avoid the Bakerloo" is a reasonable thing to ask of
+                raising - "avoid the Bakerloo" is a reasonable thing to ask of
                 a network that has no Bakerloo.
 
         Returns:

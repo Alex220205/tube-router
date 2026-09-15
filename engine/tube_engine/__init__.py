@@ -12,7 +12,7 @@ with Docker uninstalled.
 That separation is the argument this project is making, and it is a reaction
 to a specific failure: in 2021 Traversal.Create_graph opened a database cursor
 inside the graph builder, so routing could not be exercised without a live
-SQLite file. It never was — and the aliasing bug at line 532 destroyed the
+SQLite file. It never was - and the aliasing bug at line 532 destroyed the
 graph on every search, unnoticed for five years.
 
 CONSTRAINT

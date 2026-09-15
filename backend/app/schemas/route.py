@@ -4,7 +4,7 @@ The wire format for a planned journey.
 WHY THIS EXISTS
     Engine dataclasses are never returned from an endpoint. These are what
     routes/route.py converts them into, and that conversion is half of the
-    engine boundary — the half that stops Pydantic, FastAPI and OpenAPI
+    engine boundary - the half that stops Pydantic, FastAPI and OpenAPI
     concerns leaking backwards into a package that declares no dependencies.
 
     It is also where station *names* arrive. The engine speaks in NaPTAN ids
@@ -19,7 +19,7 @@ WHAT THE 2021 VERSION DID
             the literal 9999999 at lines 868 and 876 to decide what to draw.
     Wrong:  A magic number invented by the algorithm had become part of the
             contract with the interface. Any caller that forgot to check it
-            rendered 9999999 as a journey time — two and a half months.
+            rendered 9999999 as a journey time - two and a half months.
 
 WHAT CHANGED AND WHY
     A route that does not exist is a different shape, not a special number.
@@ -78,7 +78,7 @@ class LegPublic(BaseModel):
     line: str = Field(description="TfL line code, e.g. victoria.")
     seconds: int = Field(
         description=(
-            "Time on this line. Excludes the change that follows it — "
+            "Time on this line. Excludes the change that follows it - "
             "interchange time belongs to the route total, not to either leg."
         )
     )
@@ -92,7 +92,7 @@ class RouteResponse(BaseModel):
 
     `found` is the discriminator rather than an HTTP status, because "those
     two stations are not connected" is a successful answer to a well-formed
-    question — the same reasoning that made an empty station search a 200 in
+    question - the same reasoning that made an empty station search a 200 in
     Phase 3. A 404 would conflate it with "that endpoint does not exist", and
     a 500 would claim the service is broken when it is working correctly.
     """

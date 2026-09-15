@@ -1,5 +1,5 @@
 """
-GET /health — is the service up, and can it reach Postgres.
+GET /health - is the service up, and can it reach Postgres.
 
 WHY THIS EXISTS
     A health check that only proves the process started tells you nothing the

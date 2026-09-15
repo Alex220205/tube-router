@@ -4,7 +4,7 @@ Rows in, Network out. The boundary between the database and the engine.
 WHY THIS EXISTS
     This is the only module in the project allowed to import both SQLAlchemy
     models and engine types. Above it, rows. Below it, domain objects. When
-    someone asks where the boundary is, this is the file — and the fact that
+    someone asks where the boundary is, this is the file - and the fact that
     it is one small module rather than a layer spread through the codebase is
     the argument the repository structure has been making since Phase 0.
 
@@ -17,8 +17,8 @@ WHAT THE 2021 VERSION DID
     How:    The graph builder opened its own database cursor. Line 474 built
             a throwaway station object with ten placeholder arguments purely
             to reach its database method, line 494 ran SELECT * FROM
-            connections, and DisplayStationdatabase() — a full SELECT * FROM
-            stations over 486 rows — was called at lines 509 and 513 inside a
+            connections, and DisplayStationdatabase() - a full SELECT * FROM
+            stations over 486 rows - was called at lines 509 and 513 inside a
             triple-nested loop.
     Wrong:  Two things, and they compounded.
 
@@ -36,7 +36,7 @@ WHAT CHANGED AND WHY
 
     Building it once per process rather than once per search is the direct
     fix for the second defect above, and it is only safe because Network is
-    immutable — the same property that makes the first defect unwritable.
+    immutable - the same property that makes the first defect unwritable.
 
 WHAT'S NEW
     step_free_platforms. Accessibility is per (station, line), which is the
@@ -73,7 +73,7 @@ CACHE_TTL_SECONDS = 3600
 
 # The built graph, held for the life of the process. This is the direct fix
 # for Create_graph running inside the search, and it is only safe because
-# Network is immutable — a mutable one shared between requests would be the
+# Network is immutable - a mutable one shared between requests would be the
 # 2021 aliasing bug with concurrency on top.
 _network: Network | None = None
 
@@ -87,8 +87,8 @@ async def get_network(session: AsyncSession) -> Network:
     """The routing graph, built once per process.
 
     Built on first use rather than at startup. Phase 0 established that a
-    degraded database must not stop the API serving — /health reports
-    `degraded` with a 200 and the frontend renders it — and building here at
+    degraded database must not stop the API serving - /health reports
+    `degraded` with a 200 and the frontend renders it - and building here at
     boot would undo that, failing the container whenever Postgres was slow
     and taking down the one page whose job is to say "database unreachable".
 
@@ -173,7 +173,7 @@ async def read_rows(session: AsyncSession) -> dict[str, Any]:
 
     Five queries rather than one join. The engine wants whole collections, not
     a row-per-combination, and joining would return every station once per
-    line it serves — which is exactly the shape the 2021 schema had and the
+    line it serves - which is exactly the shape the 2021 schema had and the
     reason it deduplicated by name string on every search.
 
     Lists rather than dicts, because this goes into Redis and the field names
@@ -192,7 +192,7 @@ async def read_rows(session: AsyncSession) -> dict[str, Any]:
 
     # location is geography(Point, 4326), which is not a float pair, so the
     # coordinates are unpacked in SQL. ST_X is longitude and ST_Y is latitude
-    # — backwards to anyone thinking "lat, lon", and getting it wrong puts
+    # - backwards to anyone thinking "lat, lon", and getting it wrong puts
     # every station in the Indian Ocean without raising anything.
     geometry = cast(StationRow.location, Geometry)
     station_rows = (

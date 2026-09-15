@@ -45,7 +45,7 @@ def every_platform(network_lines: dict[str, list[str]]) -> list[tuple[str, str]]
 
     Spelled out per fixture rather than defaulted to "all accessible",
     because a default here would make the step-free tests pass for the wrong
-    reason — the interesting cases are the ones where a platform is missing.
+    reason - the interesting cases are the ones where a platform is missing.
     """
     return [
         (station_id, line)
@@ -165,7 +165,7 @@ def two_lines() -> Network:
 
     A to D is 60 + 90 + 60 = 210 seconds, two legs, one change. A search on a
     station-only graph would report 120 and be wrong by the entire cost of
-    changing — which is why nodes are (station, line) pairs.
+    changing - which is why nodes are (station, line) pairs.
     """
     return Network(
         stations=[station(s) for s in "ABCD"],
@@ -289,7 +289,7 @@ def equally_fast_one_needs_a_change() -> Network:
         change at C: blue <-> green, 20 seconds
 
     Both come to 200 seconds. Fastest has nothing to choose between them on
-    time, so without a tie-break the answer depends on heap ordering — which
+    time, so without a tie-break the answer depends on heap ordering - which
     means it depends on station ids rather than on the question.
     """
     return Network(
@@ -314,7 +314,7 @@ def step_free_is_slower() -> Network:
         D's `red` platform is NOT step-free, and B has nothing accessible.
 
     Fastest:    120 seconds on red, ending at a platform you cannot leave.
-    Step-free:  300 seconds on blue, which you can. No change is needed —
+    Step-free:  300 seconds on blue, which you can. No change is needed -
                 A is on both lines, so the search simply starts on blue.
 
     Note that the red route is not removed from the graph. The rides are
@@ -345,7 +345,7 @@ def step_free_is_impossible() -> Network:
 
         step-free platforms: A and B on red, A and C on blue. D: none.
 
-    The correct answer is NoRoute("disconnected") — not "unknown_destination",
+    The correct answer is NoRoute("disconnected") - not "unknown_destination",
     which would be the engine claiming a station that exists does not.
     """
     return Network(

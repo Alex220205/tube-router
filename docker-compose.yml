@@ -84,14 +84,14 @@ services:
         condition: service_healthy
     healthcheck:
       # Deliberately passes on any 2xx, which means this container reports
-      # healthy even while /health says the database is unreachable — verified
+      # healthy even while /health says the database is unreachable - verified
       # by stopping db and watching `compose ps` stay green.
       #
       # That is the intended behaviour: this check answers "is the API
       # serving", and it is. Postgres reports on Postgres through its own
       # healthcheck above. Making this one fail on a degraded database would
       # have it lie about a service it does not own, and would block the
-      # frontend from starting — so the page that exists to display "database
+      # frontend from starting - so the page that exists to display "database
       # unreachable" would never load. See docs/DECISIONS.md.
       #
       # No curl or wget in python:3.12-slim, and adding one to a production

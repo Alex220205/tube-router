@@ -19,7 +19,7 @@ parsed it as a single column, raised no error, and left it empty for five
 years.
 
 Downgrade drops the extension. It will fail if anything still depends on it,
-which is correct — a downgrade that silently discards spatial columns would
+which is correct - a downgrade that silently discards spatial columns would
 be worse than one that refuses.
 """
 

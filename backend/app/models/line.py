@@ -10,7 +10,7 @@ WHAT THE 2021 VERSION DID
     Where:  train_stations.db, `lines` table
     How:    (line_id, name, service_status). Eleven rows.
     Wrong:  service_status held live values like "Severe Delays", and the
-            application deleted every row and reinserted it on launch —
+            application deleted every row and reinserted it on launch -
             Line.DeleteLinedatabase followed by Line.AddLinedatabase. That is
             a cache wearing a table's clothing: the persistent store rewritten
             at startup for data with a lifetime of minutes.
@@ -43,7 +43,7 @@ class TransportMode(enum.Enum):
     The cost is that adding a value later needs an explicit ALTER TYPE in a
     migration, which is acceptable for a set this stable.
 
-    Only TUBE is used in Phase 2 — the network is seeded tube-first — but the
+    Only TUBE is used in Phase 2 - the network is seeded tube-first - but the
     others are declared now so adding them is data rather than a migration.
     """
 
@@ -64,7 +64,7 @@ TRANSPORT_MODE = Enum(
 
 
 class Line(Base):
-    """A single line — Victoria, Central, the Elizabeth line."""
+    """A single line - Victoria, Central, the Elizabeth line."""
 
     __tablename__ = "lines"
 

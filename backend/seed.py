@@ -6,7 +6,7 @@ Populate the database from the TfL Unified API.
 WHY THIS EXISTS
     A one-off script, deliberately outside app/ because it is not part of the
     running service and nothing in app/ imports it. It fetches, transforms,
-    writes and then checks — four steps in that order, each of which can be
+    writes and then checks - four steps in that order, each of which can be
     read on its own.
 
 WHAT THE 2021 VERSION DID
@@ -27,7 +27,7 @@ WHAT CHANGED AND WHY
     in services/seed_checks.py pass.
 
 WHAT'S NEW
-    The data source. The 2021 database is no longer the input — it is the
+    The data source. The 2021 database is no longer the input - it is the
     artifact this is measured against.
 """
 
@@ -323,7 +323,7 @@ async def main() -> int:
     failed = [result for result in results if not result.passed]
     for result in results:
         mark = "PASS" if result.passed else "FAIL"
-        log(f"  [{mark}] {result.name} — {result.detail}")
+        log(f"  [{mark}] {result.name} - {result.detail}")
 
     await engine.dispose()
 

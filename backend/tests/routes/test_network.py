@@ -9,7 +9,7 @@ WHY THIS EXISTS
 
 NO 2021 EQUIVALENT
     No endpoints, no map, and no way to ask a question about the network as a
-    whole — which is why nobody noticed it was 70.5% connected.
+    whole - which is why nobody noticed it was 70.5% connected.
 
 CONSTRAINT
     Needs a real Postgres with PostGIS.
@@ -25,7 +25,7 @@ from app.models import Line, Segment, Station, StationLine, TransportMode
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("TEST_DATABASE_URL"),
-    reason="TEST_DATABASE_URL is unset — these need a live Postgres with PostGIS",
+    reason="TEST_DATABASE_URL is unset - these need a live Postgres with PostGIS",
 )
 
 
@@ -74,7 +74,7 @@ async def seed_tiny_network(db: AsyncSession) -> None:
 async def test_lines_carry_the_colour_the_map_draws_with(
     api: AsyncClient, db: AsyncSession
 ) -> None:
-    # colour is NOT NULL and has no TfL API source — it comes from a
+    # colour is NOT NULL and has no TfL API source - it comes from a
     # hardcoded map in the seed. If that ever breaks, the map renders in
     # whatever the default is and looks merely wrong rather than broken.
     await seed_tiny_network(db)
@@ -90,7 +90,7 @@ async def test_every_segment_names_a_station_the_payload_contains(
     api: AsyncClient, db: AsyncSession
 ) -> None:
     # The failure this guards is a line drawn to nowhere. Segments carry ids
-    # rather than nested stations, so the client joins them — and a dangling
+    # rather than nested stations, so the client joins them - and a dangling
     # id produces a map that is silently missing track.
     await seed_tiny_network(db)
 
@@ -106,7 +106,7 @@ async def test_every_segment_names_a_station_the_payload_contains(
 async def test_the_network_keeps_both_directions_with_their_own_times(
     api: AsyncClient, db: AsyncSession
 ) -> None:
-    # Segments are directional and the two directions genuinely differ —
+    # Segments are directional and the two directions genuinely differ -
     # Waterloo & City is 180 seconds one way and 240 the other in the real
     # data. Collapsing them would average away real asymmetry.
     await seed_tiny_network(db)

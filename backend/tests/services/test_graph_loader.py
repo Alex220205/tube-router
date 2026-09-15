@@ -3,8 +3,8 @@ Tests for the boundary between the database and the engine.
 
 WHY THIS EXISTS
     graph_loader is the one module that touches both sides, so a mistake in it
-    is invisible from either. The engine suite cannot catch it — it never sees
-    a database — and the endpoint tests would only notice if the resulting
+    is invisible from either. The engine suite cannot catch it - it never sees
+    a database - and the endpoint tests would only notice if the resulting
     route were wrong in a way a human recognised.
 
     The failure mode that matters is silent partial loading. Drop a table's
@@ -288,7 +288,7 @@ async def test_forgetting_makes_the_next_request_rebuild(db: AsyncSession) -> No
 
 async def test_rows_survive_a_round_trip_through_json(db: AsyncSession) -> None:
     # read_rows output goes into Redis, so it has to be JSON-safe. A value
-    # that is not — a Decimal from a numeric column, say — would make every
+    # that is not - a Decimal from a numeric column, say - would make every
     # write fail and the cache would silently never work, showing up only as
     # unexplained slowness.
     red = await build_line(db, "red")

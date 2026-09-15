@@ -9,14 +9,14 @@ WHY THIS EXISTS
 NO 2021 EQUIVALENT
     The old project drew no map. Its nearest equivalent was the dict of dicts
     that Traversal.Create_graph rebuilt from SQL on every single search and
-    then discarded — which is why nothing could ever ask a question about the
+    then discarded - which is why nothing could ever ask a question about the
     network as a whole. Not even whether it was connected. It was not: 244 of
     346 stations, with two Central line branches and the entire Overground
     unreachable.
 
 WHAT'S NEW
     Sent whole rather than paginated. A partial network is not useful to
-    anybody — a map cannot draw half a graph — and at 272 stations and 754
+    anybody - a map cannot draw half a graph - and at 272 stations and 754
     segments it is a few hundred KB. It becomes a Redis cache candidate in
     Phase 6 alongside the built engine Network, not before: there is no
     evidence yet that it is slow, and caching something fast is how a cache

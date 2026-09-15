@@ -1,5 +1,5 @@
 """
-POST /route — the endpoint the whole project exists to serve.
+POST /route - the endpoint the whole project exists to serve.
 
 WHY THIS EXISTS
     Five phases built the parts. This is where a browser can finally ask for
@@ -16,7 +16,7 @@ WHAT THE 2021 VERSION DID
             the literal 9999999 to decide whether to draw a route.
     Wrong:  There was no interface, so there was no place for input handling
             to live. The window validated nothing, the search signalled
-            failure with a magic number, and the two were the same program —
+            failure with a magic number, and the two were the same program -
             which is why neither could be tested.
 
 WHAT CHANGED AND WHY
@@ -88,7 +88,7 @@ async def plan_route(request: RouteRequest, session: SessionDep) -> RouteRespons
 
     Returns:
         A RouteResponse. `found` is false with a reason when the two stations
-        are real but not connected — a 200, because that is a correct answer
+        are real but not connected - a 200, because that is a correct answer
         rather than a failed request.
 
     Raises:

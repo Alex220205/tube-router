@@ -17,7 +17,7 @@ WHY THIS EXISTS
 
 NO 2021 EQUIVALENT
     The old project stored live line status in a persistent SQLite table and
-    deleted every row on launch to reinsert it — a cache wearing a table's
+    deleted every row on launch to reinsert it - a cache wearing a table's
     clothing. There was no cache, and nothing that needed one, because the
     graph was rebuilt from SQL on every search anyway.
 
@@ -47,7 +47,7 @@ def get_client() -> redis.Redis:
     """The shared Redis client, created once per process.
 
     Built lazily rather than at import so that importing `app` does not
-    require Redis to exist — which is what lets the test suite and Alembic
+    require Redis to exist - which is what lets the test suite and Alembic
     run without it.
     """
     global _client
@@ -56,7 +56,7 @@ def get_client() -> redis.Redis:
             get_settings().redis_url,
             decode_responses=True,
             # Short on purpose. This is a latency optimisation, so a Redis
-            # that cannot answer quickly is not helping — and the default
+            # that cannot answer quickly is not helping - and the default
             # waits long enough for an unreachable host that the "cache"
             # becomes slower than the database it was meant to save.
             #
@@ -77,7 +77,7 @@ async def read_json(key: str) -> Any | None:
     Returns:
         The decoded value, or None on a miss, on unreadable content, or if
         Redis cannot be reached at all. The caller cannot tell these apart
-        and should not need to — every one of them means "go to the source".
+        and should not need to - every one of them means "go to the source".
     """
     try:
         raw = await get_client().get(key)
@@ -99,7 +99,7 @@ async def write_json(key: str, value: Any, ttl_seconds: int) -> None:
     Args:
         key: Cache key.
         value: Anything json.dumps can handle.
-        ttl_seconds: Expiry. Always set — an entry that never expires is one
+        ttl_seconds: Expiry. Always set - an entry that never expires is one
             that has to be invalidated correctly forever, and getting that
             wrong serves stale data indefinitely.
     """

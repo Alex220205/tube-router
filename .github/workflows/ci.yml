@@ -22,14 +22,14 @@ concurrency:
 
 jobs:
   python:
-    name: Python — lint, types, tests
+    name: Python - lint, types, tests
     runs-on: ubuntu-latest
 
     # The schema tests assert what Postgres rejects, which cannot be faked
     # with a stub the way the /health tests fake a session. They need a real
     # server with PostGIS, so CI runs one.
     #
-    # The engine job needs nothing and gets nothing — if engine tests ever
+    # The engine job needs nothing and gets nothing - if engine tests ever
     # require a database, something has gone wrong in engine/.
     services:
       db:
@@ -78,13 +78,13 @@ jobs:
         env:
           # Set explicitly so the schema tests RUN here. They skip when this
           # is unset, which is right on a laptop with nothing started and
-          # wrong in CI — a silently skipped constraint test is worse than no
+          # wrong in CI - a silently skipped constraint test is worse than no
           # test, because the build still goes green.
           TEST_DATABASE_URL: postgresql+asyncpg://tube:tube@localhost:5432/tube_router_test
         run: uv run pytest
 
   frontend:
-    name: Frontend — lint, tests
+    name: Frontend - lint, tests
     runs-on: ubuntu-latest
     defaults:
       run:

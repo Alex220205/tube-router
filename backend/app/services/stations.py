@@ -3,7 +3,7 @@ Queries over the network tables.
 
 WHY THIS EXISTS
     Route handlers validate input, call one thing, and shape a response.
-    Everything with reasoning in it lives here — which for Phase 3 means the
+    Everything with reasoning in it lives here - which for Phase 3 means the
     search, the coordinate extraction, and the joins that turn six normalised
     tables back into something a map can draw.
 
@@ -11,7 +11,7 @@ WHY THIS EXISTS
     HTTP client in the way.
 
 WHAT THE 2021 VERSION DID
-    Where:  database[works].py, throughout — Stations.DisplayStationdatabase
+    Where:  database[works].py, throughout - Stations.DisplayStationdatabase
             and the SELECTs inline in the GUI methods
     How:    SQL was written wherever a result was wanted, including inside
             Traversal.Create_graph's inner loop at lines 509 and 513.
@@ -26,7 +26,7 @@ WHAT CHANGED AND WHY
 
 WHAT'S NEW
     Coordinate extraction. stations.location is geography(Point, 4326), which
-    is not JSON, so every read that leaves the database converts it — and
+    is not JSON, so every read that leaves the database converts it - and
     that conversion is in exactly one place rather than at each call site.
 """
 
@@ -48,7 +48,7 @@ def _station_columns() -> Select:
 
     ST_X is longitude and ST_Y is latitude. That reads backwards to anyone
     thinking in "lat, lon" order, and swapping them puts every station in the
-    Indian Ocean without raising anything — so the conversion lives here once
+    Indian Ocean without raising anything - so the conversion lives here once
     instead of at each call site.
     """
     geometry = cast(Station.location, Geometry)
@@ -68,7 +68,7 @@ async def search_stations(
     """Find stations whose name contains the query.
 
     Substring rather than prefix, because names are stored exactly as TfL
-    gives them — "Oxford Circus Underground Station" has to be findable by
+    gives them - "Oxford Circus Underground Station" has to be findable by
     typing either "oxford" or "circus".
 
     Args:
@@ -155,7 +155,7 @@ async def get_network(session: AsyncSession) -> dict:
 
     Whole rather than paginated: a map cannot draw a partial network, so a
     page of it is not useful to anybody. Roughly 272 stations and 754
-    segments — a few hundred KB. It becomes a Redis cache candidate in Phase
+    segments - a few hundred KB. It becomes a Redis cache candidate in Phase
     6 alongside the built engine Network, not before.
 
     Returns:

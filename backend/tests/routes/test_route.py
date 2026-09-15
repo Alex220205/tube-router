@@ -46,7 +46,7 @@ async def seed_two_line_network(db: AsyncSession) -> None:
 
     Fastest:        30 + 20 + 30 = 80 seconds, one change.
     Fewest changes: 300 seconds, none.
-    Step-free:      300 seconds on green — the only accessible way.
+    Step-free:      300 seconds on green - the only accessible way.
 
     Worked out on paper, like every expected value in the engine suite.
     """
@@ -137,7 +137,7 @@ async def test_a_route_comes_back_with_named_stations(
 ) -> None:
     # The engine speaks NaPTAN ids because it must not care what anything is
     # called. A client needs "Green Park", and resolving that is the route
-    # module's job — so it is asserted here rather than assumed.
+    # module's job - so it is asserted here rather than assumed.
     await seed_two_line_network(db)
 
     body = await plan(api)
@@ -190,7 +190,7 @@ async def test_two_real_stations_with_no_route_is_a_200_with_a_reason(
     """**The one that matters.**
 
     ORPHAN exists and has no track. That is a successful answer to a
-    well-formed question, so it is a 200 carrying a reason — not a 404, which
+    well-formed question, so it is a 200 carrying a reason - not a 404, which
     would tell the client its request was wrong, and not a 500, which would
     claim the service is broken while it is working correctly.
 
@@ -261,7 +261,7 @@ async def test_a_missing_field_is_a_422_from_the_schema(
 async def test_origin_equal_to_destination_is_an_empty_route_not_an_error(
     api: AsyncClient, db: AsyncSession
 ) -> None:
-    # "You are already there" — the same reasoning that made an empty station
+    # "You are already there" - the same reasoning that made an empty station
     # search a 200 in Phase 3.
     await seed_two_line_network(db)
 

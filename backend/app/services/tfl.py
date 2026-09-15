@@ -3,7 +3,7 @@ The TfL Unified API client. The only file in this project that talks to TfL.
 
 WHY THIS EXISTS
     Keeping every outbound HTTP call in one place means everything downstream
-    of it is a pure function over a payload — which is what lets the whole of
+    of it is a pure function over a payload - which is what lets the whole of
     services/seed.py be tested against saved fixtures with no network at all.
     It also means the timeout, the retry policy and the app key are decided
     once rather than at each call site.
@@ -21,7 +21,7 @@ WHAT'S NEW
     that hangs on a single unresponsive endpoint looks identical to one doing
     slow work.
 
-    Retries on 5xx, on transport failures, and on 429 — but on no other 4xx.
+    Retries on 5xx, on transport failures, and on 429 - but on no other 4xx.
     A 404 means the line id is wrong and retrying it three times is being
     wrong three times more slowly. 429 is the opposite: it means "you were
     right, just slower", and it is the one status that is guaranteed to
@@ -29,7 +29,7 @@ WHAT'S NEW
 
     A minimum interval between requests, because TfL allows 50 a minute
     without a key and a seed of the tube network makes about ninety. Without
-    throttling the run gets a third of the way through and then 429s — which
+    throttling the run gets a third of the way through and then 429s - which
     is exactly how this was discovered.
 
     The client takes an httpx transport, so tests inject a MockTransport and
@@ -62,7 +62,7 @@ TOO_MANY_REQUESTS = 429
 RATE_LIMIT_PAUSE = 30.0
 
 # TfL allows 50 requests a minute without a key. 1.3 seconds between requests
-# keeps a seed run — about ninety requests — comfortably inside that, at the
+# keeps a seed run - about ninety requests - comfortably inside that, at the
 # cost of roughly two minutes wall clock. With a key the limit is far higher
 # and this can be lowered.
 UNAUTHENTICATED_REQUEST_INTERVAL = 1.3
@@ -93,7 +93,7 @@ class StationData:
     Attributes:
         platform_services: One row per platform per line. Carries
             DesignatedLevelAccessPoint, which is step-free access per
-            (station, line) — the only place TfL publishes it at that grain.
+            (station, line) - the only place TfL publishes it at that grain.
         step_free_interchanges: Platform-to-platform distances in metres.
             Sparse: about 114 rows for the whole network.
     """
@@ -201,7 +201,7 @@ class TfLClient:
 
                 if response.status_code == TOO_MANY_REQUESTS:
                     # The one 4xx worth retrying. It does not mean the
-                    # request was wrong, it means it was too soon — so
+                    # request was wrong, it means it was too soon - so
                     # waiting is the entire fix.
                     last = TfLError(f"GET {path} was rate limited")
                     pause = max(pause, _retry_after(response, default=RATE_LIMIT_PAUSE))
@@ -219,7 +219,7 @@ class TfLClient:
                 # Linear rather than exponential, except for rate limiting
                 # where TfL's own Retry-After wins. The failures worth
                 # retrying here are brief, and the seed makes about ninety
-                # requests — exponential backoff would turn a bad minute into
+                # requests - exponential backoff would turn a bad minute into
                 # a bad hour.
                 await asyncio.sleep(pause)
 
