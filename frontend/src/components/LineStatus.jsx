@@ -39,13 +39,13 @@ export default function LineStatus({ status, lines }) {
   // Null status means nothing has answered yet; a null as_of means the server
   // answered and does not know. Both are "unknown", and neither is "fine".
   if (!status?.as_of) {
-    return <p className="text-gray-500">Line status unavailable</p>
+    return <p className="text-tfl-grey">Line status unavailable</p>
   }
 
   const disrupted = status.lines.filter((line) => line.severity !== GOOD_SERVICE)
 
   if (disrupted.length === 0) {
-    return <p className="text-green-700">Good service on all lines</p>
+    return <p className="text-tfl-green font-medium">Good service on all lines</p>
   }
 
   const byCode = new Map((lines ?? []).map((line) => [line.code, line]))
@@ -55,14 +55,14 @@ export default function LineStatus({ status, lines }) {
       {disrupted.map((line) => (
         <li key={line.line_code} className="flex items-baseline gap-1.5">
           <span
-            className="size-2 shrink-0 rounded-full"
+            className="mt-1 size-2.5 shrink-0"
             style={{ backgroundColor: byCode.get(line.line_code)?.colour ?? '#7f7f7f' }}
             aria-hidden="true"
           />
           <span className="font-medium">
             {byCode.get(line.line_code)?.name ?? line.line_code}
           </span>
-          <span className="text-gray-500">{line.description}</span>
+          <span className="text-tfl-grey">{line.description}</span>
         </li>
       ))}
     </ul>

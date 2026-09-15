@@ -17,11 +17,14 @@
  *             rendered it as a duration: two and a half months.
  *
  * WHAT'S NEW
- *     Legs, so changes are visible. `found` instead of a magic number. And
+ *     Legs, so changes are visible, each stamped with its line's real colour
+ *     from the database. `found` instead of a magic number. And
  *     `avoided_for_disruption`, which is Phase 7 arriving on screen: a
  *     journey that silently takes a strange path is indistinguishable from a
  *     bug, so the page says why.
  */
+
+import { shortName } from '../lib/station-name'
 
 // One sentence per reason the engine can give. Written for a traveller, not
 // copied from the wire: "disconnected" is a correct description of a graph
@@ -68,11 +71,15 @@ function duration(seconds) {
  */
 export default function RoutePanel({ route, loading, error, objective, lines }) {
   if (error) {
-    return <p className="mt-4 text-sm text-red-600">Could not plan a route: {error}</p>
+    return (
+      <p className="border-tfl-red bg-tfl-red/5 text-tfl-red mt-5 border-l-4 px-3 py-2 text-sm">
+        Could not plan a route: {error}
+      </p>
+    )
   }
 
   if (loading) {
-    return <p className="mt-4 text-sm text-gray-500">Planning…</p>
+    return <p className="text-tfl-grey mt-5 text-sm">Planning…</p>
   }
 
   if (!route) return null
@@ -88,8 +95,8 @@ export default function RoutePanel({ route, loading, error, objective, lines }) 
         : (REASONS[route.reason] ?? 'No route.')
 
     return (
-      <div className="mt-4 border-t border-gray-100 pt-3">
-        <p className="text-sm">{message}</p>
+      <div className="border-tfl-line mt-5 border-t pt-4">
+        <p className="text-sm font-medium">{message}</p>
         <AvoidedLines codes={route.avoided_for_disruption} lines={lines} />
       </div>
     )
@@ -98,23 +105,27 @@ export default function RoutePanel({ route, loading, error, objective, lines }) 
   const byCode = new Map((lines ?? []).map((line) => [line.code, line]))
 
   return (
-    <div className="mt-4 border-t border-gray-100 pt-3">
-      <p className="text-lg font-semibold">
-        {duration(route.total_seconds)}
-        <span className="ml-2 text-sm font-normal text-gray-500">
+    <div className="border-tfl-line mt-5 border-t pt-4">
+      <div className="flex items-baseline gap-2">
+        <p className="text-2xl leading-none font-bold">
+          {duration(route.total_seconds)}
+        </p>
+        <p className="text-tfl-grey text-sm">
           {route.changes === 0
             ? 'direct'
             : `${route.changes} change${route.changes === 1 ? '' : 's'}`}
-        </span>
-      </p>
+        </p>
+      </div>
 
       {/* Stated only when true. "Not step-free" on a journey nobody asked to
           be step-free is a warning about a thing that was never promised. */}
       {route.step_free && (
-        <p className="mt-0.5 text-xs text-green-700">Step-free throughout</p>
+        <p className="text-tfl-green mt-1 text-xs font-bold tracking-wide uppercase">
+          Step-free throughout
+        </p>
       )}
 
-      <ol className="mt-3 space-y-3">
+      <ol className="mt-4 space-y-3">
         {route.legs.map((leg, index) => {
           const line = byCode.get(leg.line)
           const stops = leg.stations.length - 1
@@ -122,18 +133,23 @@ export default function RoutePanel({ route, loading, error, objective, lines }) 
           return (
             // Index as the key: legs have no id, and a journey's legs are
             // only ever replaced wholesale by a new answer, never reordered.
-            <li key={index} className="flex gap-2">
+            <li key={index} className="flex gap-3">
+              {/* The line's own colour, straight from the database. This is
+                  the one place the page is unmistakably about the Tube
+                  rather than about transport in general. */}
               <span
-                className="mt-1 w-1 shrink-0 rounded"
-                style={{ backgroundColor: line?.colour ?? '#7f7f7f' }}
+                className="mt-0.5 w-1.5 shrink-0"
+                style={{ backgroundColor: line?.colour ?? '#6f777b' }}
                 aria-hidden="true"
               />
-              <div className="min-w-0">
-                <p className="text-sm font-medium">{line?.name ?? leg.line}</p>
-                <p className="text-sm text-gray-600">
-                  {leg.stations[0].name} to {leg.stations.at(-1).name}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold">{line?.name ?? leg.line}</p>
+                <p className="mt-0.5 text-sm">
+                  {shortName(leg.stations[0].name)}
+                  <span className="text-tfl-grey"> to </span>
+                  {shortName(leg.stations.at(-1).name)}
                 </p>
-                <p className="mt-0.5 text-xs text-gray-400">
+                <p className="text-tfl-grey mt-0.5 text-xs">
                   {stops} stop{stops === 1 ? '' : 's'} · {duration(leg.seconds)}
                 </p>
               </div>
@@ -159,7 +175,7 @@ function AvoidedLines({ codes, lines }) {
   const names = codes.map((code) => byCode.get(code)?.name ?? code)
 
   return (
-    <p className="mt-3 rounded bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
+    <p className="border-tfl-amber bg-tfl-amber/10 mt-4 border-l-4 px-3 py-2 text-xs">
       Avoiding {names.join(', ')} - no trains running.
     </p>
   )

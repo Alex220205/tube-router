@@ -57,10 +57,28 @@ const BLANK_STYLE = {
  * @param {object | null} props.route A RouteResponse, or null when no journey
  *   has been planned. A route that was not found is handled by the transform
  *   rather than here, so clearing the map and drawing on it are one path.
+ * @param {(message: string) => void} [props.onError] Called with whatever
+ *   MapLibre complains about. See the note below on why this exists.
  */
-export default function TubeMap({ network, route }) {
+export default function TubeMap({ network, route, onError }) {
   const container = useRef(null)
   const map = useRef(null)
+
+  // MapLibre reports almost everything through an 'error' event rather than
+  // by throwing: a WebGL context it could not get, a source that would not
+  // parse, a glyph it could not fetch. With no listener those go to the
+  // console and nowhere else, so the page renders a blank canvas and says
+  // nothing - which is precisely the failure this project keeps arguing
+  // against everywhere else. Anything it reports is now put on screen.
+  //
+  // Held in a ref, and updated in an effect rather than during render: the
+  // listener is registered once when the map is built, and reading the prop
+  // through a ref means a new callback does not require tearing the map down
+  // and putting it back up to hear about it.
+  const report = useRef(onError)
+  useEffect(() => {
+    report.current = onError
+  }, [onError])
 
   // Created once, and never in the same effect that updates the data.
   // Re-creating a Map leaks its WebGL context, and browsers cap those at
@@ -69,17 +87,32 @@ export default function TubeMap({ network, route }) {
   useEffect(() => {
     if (map.current) return
 
-    map.current = new Map({
-      container: container.current,
-      style: BLANK_STYLE,
-      center: CENTRE,
-      zoom: ZOOM,
-      // Nothing here is legible upside down, and a rotated tube map helps
-      // nobody find a station.
-      dragRotate: false,
-      attributionControl: false,
-    })
+    try {
+      map.current = new Map({
+        container: container.current,
+        style: BLANK_STYLE,
+        center: CENTRE,
+        zoom: ZOOM,
+        // Nothing here is legible upside down, and a rotated tube map helps
+        // nobody find a station.
+        dragRotate: false,
+        attributionControl: false,
+      })
+    } catch (cause) {
+      // The one thing MapLibre does throw rather than report: it could not
+      // get a WebGL context. Software rendering disabled, a blocked GPU, a
+      // browser with hardware acceleration off. Uncaught here it would take
+      // the whole React tree down and leave a white page with no explanation,
+      // which is a worse outcome than a map-shaped hole and a sentence.
+      report.current?.(cause.message)
+      return
+    }
+
     map.current.addControl(new NavigationControl({ showCompass: false }))
+
+    map.current.on('error', (event) => {
+      report.current?.(event?.error?.message ?? 'the map failed for an unstated reason')
+    })
 
     return () => {
       map.current?.remove()

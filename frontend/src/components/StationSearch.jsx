@@ -11,17 +11,21 @@
  *     in the same process.
  *
  * WHAT'S NEW
- *     It is now reusable, and results are clickable. Until this phase it was
- *     a demonstration that the API answered - it listed stations and nothing
- *     could be done with them.
+ *     It is reusable, and results are clickable.
  *
  *     The id is a prop rather than a constant. Two copies of a hardcoded id
  *     is invalid HTML, and the practical cost is that a label stops pointing
  *     at its own input: screen readers announce the wrong one, clicking the
  *     label focuses the wrong box, and getByLabelText finds two elements.
+ *
+ *     The list appears only once something has been typed. Opening with all
+ *     272 stations pushed the To box and everything under it off the bottom
+ *     of the screen, so the second half of the form was unreachable without
+ *     scrolling past a list nobody had asked for.
  */
 
 import { useState } from 'react'
+import { shortName } from '../lib/station-name'
 import { useStations } from '../hooks/useStations'
 
 /**
@@ -41,6 +45,10 @@ export default function StationSearch({ id, label, selected, onSelect }) {
   // going out of step is the whole class of bug this avoids.
   const chosen = Boolean(selected)
 
+  // Nothing typed means nothing to choose between. The hook still runs, so
+  // the results are already there the moment a character appears.
+  const searching = query.trim().length > 0
+
   function handleChange(event) {
     setQuery(event.target.value)
 
@@ -51,44 +59,61 @@ export default function StationSearch({ id, label, selected, onSelect }) {
   }
 
   function choose(station) {
-    setQuery(station.name)
+    setQuery(shortName(station.name))
     onSelect(station)
   }
 
   return (
     <section className="mt-4">
-      <label htmlFor={id} className="block text-sm font-medium">
+      <label
+        htmlFor={id}
+        className="text-tfl-grey block text-xs font-bold tracking-wider uppercase"
+      >
         {label}
       </label>
 
-      <input
-        id={id}
-        type="search"
-        value={query}
-        onChange={handleChange}
-        placeholder="oxford, bank, king's cross…"
-        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-        autoComplete="off"
-      />
+      <div className="relative mt-1.5">
+        {/* A short bar in TfL blue down the side of the active field. It is
+            the same device the signage uses to say "this line, here", and it
+            is the one thing distinguishing a filled box from an empty one at
+            a glance. */}
+        <span
+          className={`absolute inset-y-0 left-0 w-1 ${
+            chosen ? 'bg-tfl-blue' : 'bg-tfl-line'
+          }`}
+          aria-hidden="true"
+        />
+        <input
+          id={id}
+          type="search"
+          value={query}
+          onChange={handleChange}
+          placeholder="oxford, bank, king's cross…"
+          className="border-tfl-line focus:border-tfl-blue focus:ring-tfl-blue/20 w-full border-2 bg-white py-2.5 pr-3 pl-4 text-sm focus:ring-4 focus:outline-none"
+          autoComplete="off"
+        />
+      </div>
 
       {error && (
-        <p className="mt-2 text-sm text-red-600">Could not reach the API: {error}</p>
+        <p className="text-tfl-red mt-2 text-sm font-medium">
+          Could not reach the API: {error}
+        </p>
       )}
 
-      {loading && !error && !chosen && (
-        <p className="mt-2 text-sm text-gray-500">Searching…</p>
+      {searching && loading && !error && (
+        <p className="text-tfl-grey mt-2 text-sm">Searching…</p>
       )}
 
       {/* An empty result is a real answer, not an error. Saying so beats
           rendering an empty box the user has to interpret. */}
-      {!loading && !error && !chosen && stations.length === 0 && (
-        <p className="mt-2 text-sm text-gray-500">No stations match “{query}”.</p>
+      {searching && !loading && !error && !chosen && stations.length === 0 && (
+        <p className="text-tfl-grey mt-2 text-sm">No stations match “{query}”.</p>
       )}
 
       {/* Hidden once something is chosen: a list still offering alternatives
           under a filled-in box reads as though the choice did not take. */}
-      {!chosen && stations.length > 0 && (
-        <ul className="mt-2 max-h-48 divide-y divide-gray-100 overflow-y-auto rounded-md border border-gray-200">
+      {searching && !chosen && stations.length > 0 && (
+        <ul className="border-tfl-line divide-tfl-line mt-1.5 max-h-52 divide-y overflow-y-auto border-2 bg-white">
           {stations.map((station) => (
             <li key={station.id}>
               {/* A button, not a clickable li. Tab reaches it, Enter and
@@ -98,9 +123,9 @@ export default function StationSearch({ id, label, selected, onSelect }) {
               <button
                 type="button"
                 onClick={() => choose(station)}
-                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
+                className="hover:bg-tfl-blue focus:bg-tfl-blue w-full px-4 py-2.5 text-left text-sm hover:text-white focus:text-white focus:outline-none"
               >
-                {station.name}
+                {shortName(station.name)}
               </button>
             </li>
           ))}

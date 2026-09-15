@@ -94,16 +94,17 @@ function mockApi(route) {
 /**
  * Pick Oxford Circus as the origin and Green Park as the destination.
  *
- * Both boxes list both stations on mount, so the first click is ambiguous and
- * resolved by position - From is rendered before To. The second is not:
- * choosing a station closes that box's list, leaving only one Green Park
- * button on the page.
+ * Typing is not optional: a box shows no list until something is in it, which
+ * is what stops the page opening with all 272 stations between the From box
+ * and everything below it. The mock answers every query with both stations,
+ * so what is typed only has to be non-empty.
  */
 async function chooseBothEnds() {
-  const oxford = await screen.findAllByRole('button', { name: 'Oxford Circus' })
-  await userEvent.click(oxford[0])
+  await userEvent.type(screen.getByLabelText('From'), 'ox')
+  await userEvent.click(await screen.findByRole('button', { name: 'Oxford Circus' }))
 
-  await userEvent.click(screen.getByRole('button', { name: 'Green Park' }))
+  await userEvent.type(screen.getByLabelText('To'), 'gr')
+  await userEvent.click(await screen.findByRole('button', { name: 'Green Park' }))
 }
 
 afterEach(() => {

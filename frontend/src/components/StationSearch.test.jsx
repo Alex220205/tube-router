@@ -66,9 +66,11 @@ describe('StationSearch', () => {
     renderSearch()
     await userEvent.type(screen.getByLabelText('From'), 'oxf')
 
-    expect(
-      await screen.findByText('Oxford Circus Underground Station'),
-    ).toBeInTheDocument()
+    // "Oxford Circus", not "Oxford Circus Underground Station". The database
+    // stores TfL's commonName verbatim - a Phase 1 decision - and the suffix
+    // is trimmed on the way to the screen by lib/station-name.js, because it
+    // is the same eighteen characters on every row in the list.
+    expect(await screen.findByText('Oxford Circus')).toBeInTheDocument()
 
     // Waited for, not asserted immediately. The component fetches once on
     // mount with an empty query, and the mock answers every URL with Oxford

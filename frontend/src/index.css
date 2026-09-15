@@ -1,3 +1,27 @@
 /* Tailwind v4: one import, no config file and no PostCSS chain. Utilities are
    generated from what the source actually uses. */
 @import 'tailwindcss';
+
+/* TfL's own palette, taken from their published design standards rather than
+   picked by eye. The line colours are not here on purpose: those arrive from
+   the database with the network, so a line changing colour is a reseed and
+   never a frontend change.
+
+   Corporate blue and red are the two that carry the identity. Everything else
+   is the greyscale their signage uses, which is warmer than a default grey and
+   is what stops the page looking like a generic dashboard. */
+@theme {
+  --color-tfl-blue: #0019a8;
+  --color-tfl-blue-dark: #00147d;
+  --color-tfl-red: #dc241f;
+
+  /* The greys, light to dark. TfL numbers these on their own scale; these are
+     the four that actually get used here. */
+  --color-tfl-paper: #f7f7f5;
+  --color-tfl-line: #e3e3e1;
+  --color-tfl-grey: #6f777b;
+  --color-tfl-ink: #1c1c1b;
+
+  --color-tfl-green: #007a33;
+  --color-tfl-amber: #ffb400;
+}

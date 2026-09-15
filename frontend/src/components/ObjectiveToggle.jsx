@@ -3,7 +3,7 @@
  *
  * WHY THIS EXISTS
  *     The engine's three objectives are the thing that makes this a planner
- *     rather than a shortest-path demo, and until this phase there was no way
+ *     rather than a shortest-path demo, and until Phase 8b there was no way
  *     to ask for any of them but the default.
  *
  * WHAT THE 2021 VERSION DID
@@ -32,17 +32,21 @@ export const OBJECTIVES = [
  */
 export default function ObjectiveToggle({ value, onChange }) {
   return (
-    <fieldset className="mt-4">
-      <legend className="text-sm font-medium">Optimise for</legend>
+    <fieldset className="mt-5">
+      <legend className="text-tfl-grey text-xs font-bold tracking-wider uppercase">
+        Optimise for
+      </legend>
 
-      <div className="mt-1 flex gap-1 rounded-md bg-gray-100 p-1">
-        {OBJECTIVES.map((objective) => (
+      <div className="border-tfl-line mt-1.5 flex border-2">
+        {OBJECTIVES.map((objective, index) => (
           <label
             key={objective.value}
-            className={`flex-1 cursor-pointer rounded px-2 py-1.5 text-center text-xs ${
+            className={`flex-1 cursor-pointer px-2 py-2 text-center text-xs font-medium transition-colors ${
+              index > 0 ? 'border-tfl-line border-l-2' : ''
+            } ${
               value === objective.value
-                ? 'bg-white font-medium shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
+                ? 'bg-tfl-blue text-white'
+                : 'text-tfl-grey hover:bg-tfl-paper hover:text-tfl-ink bg-white'
             }`}
           >
             {/* sr-only, not hidden. A hidden input cannot be focused, so the
