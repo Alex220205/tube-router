@@ -14,6 +14,12 @@
  *
  * NO 2021 EQUIVALENT
  *     No client, no server, no tests.
+ *
+ * WHAT'S NEW
+ *     The component takes an id and a label now, so these render it the way
+ *     App does. Still three tests: Phase 8b made it reusable, which is not a
+ *     new failure mode - whether the label prop reaches the label is the kind
+ *     of thing that fails loudly, at once, in every other test here.
  */
 
 import { render, screen, waitFor } from '@testing-library/react'
@@ -27,6 +33,14 @@ function mockStations(handler) {
 
 function ok(body) {
   return { ok: true, status: 200, json: async () => body }
+}
+
+// Rendered the way App renders it. Nothing is selected, which is the state
+// every one of these tests is about.
+function renderSearch(onSelect = () => {}) {
+  return render(
+    <StationSearch id="from" label="From" selected={null} onSelect={onSelect} />,
+  )
 }
 
 afterEach(() => {
@@ -49,8 +63,8 @@ describe('StationSearch', () => {
       )
     })
 
-    render(<StationSearch />)
-    await userEvent.type(screen.getByLabelText('Find a station'), 'oxf')
+    renderSearch()
+    await userEvent.type(screen.getByLabelText('From'), 'oxf')
 
     expect(
       await screen.findByText('Oxford Circus Underground Station'),
@@ -70,8 +84,8 @@ describe('StationSearch', () => {
   it('says no stations match rather than showing an empty box', async () => {
     mockStations(() => Promise.resolve(ok([])))
 
-    render(<StationSearch />)
-    await userEvent.type(screen.getByLabelText('Find a station'), 'zzzz')
+    renderSearch()
+    await userEvent.type(screen.getByLabelText('From'), 'zzzz')
 
     // An empty result is a successful answer. Rendering nothing would leave
     // the user unable to tell it apart from a broken request.
@@ -81,8 +95,8 @@ describe('StationSearch', () => {
   it('reports an unreachable API instead of appearing to find nothing', async () => {
     mockStations(() => Promise.reject(new Error('Failed to fetch')))
 
-    render(<StationSearch />)
-    await userEvent.type(screen.getByLabelText('Find a station'), 'oxf')
+    renderSearch()
+    await userEvent.type(screen.getByLabelText('From'), 'oxf')
 
     await waitFor(() =>
       expect(screen.getByText(/Could not reach the API/)).toBeInTheDocument(),

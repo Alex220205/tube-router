@@ -14,12 +14,10 @@
  *     disconnected without anyone noticing.
  *
  * WHAT'S NEW
- *     The map. Until this phase the page was a health panel with a search box
- *     under it - proof the stack was connected, which was worth showing when
- *     there was nothing else. It is now a small card in the corner, because a
- *     journey planner should not lead with its own version number.
- *
- *     The route panel and objective toggle arrive in Phase 8b.
+ *     Two stations instead of one search box. This file holds the pair
+ *     because both ends of a journey have to be known in one place to ask for
+ *     a route, and neither search box has any business knowing about the
+ *     other.
  */
 
 import { useEffect, useState } from 'react'
@@ -41,6 +39,11 @@ export default function App() {
   const [health, setHealth] = useState(null)
   const [error, setError] = useState(null)
   const { network, loading: networkLoading, error: networkError } = useNetwork()
+
+  // The two ends of the journey. Null until chosen, which is what the panel
+  // below reads to decide whether there is anything to say yet.
+  const [origin, setOrigin] = useState(null)
+  const [destination, setDestination] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -73,13 +76,31 @@ export default function App() {
           wrapper and auto on each card, so dragging the map still works in
           the gaps between them. */}
       <div className="pointer-events-none absolute inset-0 p-4">
-        <div className="pointer-events-auto w-full max-w-sm rounded-lg bg-white/95 p-4 shadow-lg backdrop-blur">
+        <div className="pointer-events-auto flex max-h-full w-full max-w-sm flex-col overflow-y-auto rounded-lg bg-white/95 p-4 shadow-lg backdrop-blur">
           <h1 className="text-xl font-semibold">Tube Router</h1>
           <p className="mt-0.5 text-sm text-gray-500">
             Plan a journey on the London Underground
           </p>
 
-          <StationSearch />
+          <StationSearch
+            id="origin"
+            label="From"
+            selected={origin}
+            onSelect={setOrigin}
+          />
+          <StationSearch
+            id="destination"
+            label="To"
+            selected={destination}
+            onSelect={setDestination}
+          />
+
+          {origin && destination && (
+            <p className="mt-4 border-t border-gray-100 pt-3 text-sm">
+              {origin.name} <span className="text-gray-400">to</span>{' '}
+              {destination.name}
+            </p>
+          )}
 
           {networkLoading && (
             <p className="mt-3 text-sm text-gray-500">Loading the network…</p>
