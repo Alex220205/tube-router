@@ -77,7 +77,8 @@ class Settings(BaseSettings):
     # something unintended, which is worse than not starting.
     database_url: str
 
-    # Unused until Phase 6 (cached network) and Phase 7 (status pub/sub).
+    # The cached network rows and the generation key (Phase 6), and live
+    # line status with its pub/sub channel (Phase 7).
     redis_url: str = "redis://redis:6379/0"
 
     # --- TfL --------------------------------------------------------------
@@ -100,6 +101,15 @@ class Settings(BaseSettings):
     # the way through and then starts getting 429s - which is how the value
     # came to be here. With a key the limit is far higher and this can drop.
     tfl_min_request_interval_seconds: float = 1.3
+
+    # How often the background poller asks TfL what is running. TfL refreshes
+    # this roughly every thirty seconds, so polling faster only spends someone
+    # else's rate limit to learn nothing.
+    #
+    # Sixty seconds is also one request a minute against an unauthenticated
+    # allowance of fifty, which leaves the seed's ninety-request run unaffected
+    # if the two ever overlap.
+    tfl_status_poll_seconds: float = 60.0
 
     # Comma-separated in the environment because env vars are strings.
     # Parsed by cors_origin_list below.

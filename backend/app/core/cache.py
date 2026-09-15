@@ -28,6 +28,8 @@ WHAT'S NEW
 """
 
 import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 import redis.asyncio as redis
@@ -174,3 +176,69 @@ async def bump_generation() -> int | None:
         return int(await get_client().incr(GENERATION_KEY))
     except Exception:
         return None
+
+
+# --- pub/sub -----------------------------------------------------------------
+#
+# Redis rather than an in-process list of connected sockets, because the API
+# can run more than one worker and a message published by the worker holding
+# the poller has to reach clients connected to the others. An in-process
+# broadcast works perfectly on one process and silently fails on two, which is
+# the kind of thing that is only discovered in production.
+
+
+async def publish(channel: str, value: Any) -> None:
+    """Announce a change to every subscriber, best effort.
+
+    Args:
+        channel: Channel name.
+        value: Anything json.dumps can handle.
+
+    A failure here means connected clients keep their last view until the next
+    push rather than the service breaking, which is the same trade every other
+    function in this module makes.
+    """
+    try:
+        await get_client().publish(channel, json.dumps(value))
+    except (TypeError, ValueError):
+        raise
+    except Exception:
+        return
+
+
+@asynccontextmanager
+async def subscription(channel: str) -> AsyncIterator[AsyncIterator[Any]]:
+    """Subscribe to a channel and yield decoded messages until the caller stops.
+
+    Args:
+        channel: Channel name.
+
+    Yields:
+        An async iterator of decoded JSON payloads. Messages that are not JSON
+        are skipped rather than ending the subscription - one bad publish from
+        somewhere else must not disconnect every listener.
+
+    The pub/sub object gets its own connection, so closing it is not optional:
+    a WebSocket that disconnects without unsubscribing leaks a connection per
+    client, and the leak only shows up under the load it was built for.
+    """
+    client = get_client()
+    pubsub = client.pubsub()
+    await pubsub.subscribe(channel)
+    try:
+        yield _messages(pubsub)
+    finally:
+        await pubsub.unsubscribe(channel)
+        await pubsub.aclose()
+
+
+async def _messages(pubsub: Any) -> AsyncIterator[Any]:
+    """Decoded payloads from a subscribed pubsub, one at a time."""
+    async for message in pubsub.listen():
+        if message.get("type") != "message":
+            # Subscribe confirmations and pings. Real, and not for the caller.
+            continue
+        try:
+            yield json.loads(message["data"])
+        except (TypeError, ValueError):
+            continue

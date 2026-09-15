@@ -34,6 +34,8 @@ WHAT'S NEW
     belong to Alembic, where they are reviewable, ordered and reversible.
 """
 
+import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -49,6 +51,8 @@ from .routes.lines import router as lines_route
 from .routes.network import router as network_route
 from .routes.route import router as route_route
 from .routes.stations import router as stations_route
+from .routes.status import router as status_route
+from .services import status_poller
 
 settings = get_settings()
 
@@ -57,14 +61,26 @@ settings = get_settings()
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Start-up and shut-down work, either side of the yield.
 
-    Nothing happens on the way in. The routing graph is built on first use
-    instead, so a slow or empty database does not stop the service starting -
-    Phase 0 established that /health must be able to report "degraded".
+    The routing graph is still built on first use, not here, so a slow or
+    empty database does not stop the service starting - Phase 0 established
+    that /health must be able to report "degraded".
 
-    On the way out both pools are closed. An unclean exit leaves connections
-    lingering on the Postgres side until it times them out.
+    The status poller is started rather than awaited, for the same reason. It
+    owns every one of its own failures; if TfL is down the task retries
+    quietly and the rest of the service is unaffected.
+
+    On the way out the task is cancelled and both pools are closed. An unclean
+    exit leaves connections lingering on the Postgres side until it times them
+    out, and a poller left running past shutdown keeps a TfL connection open
+    with nothing to serve.
     """
+    poller = asyncio.create_task(status_poller.run())
+
     yield
+
+    poller.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await poller
     await dispose_engine()
     await close_cache()
 
@@ -95,6 +111,7 @@ app.include_router(stations_route)
 app.include_router(lines_route)
 app.include_router(network_route)
 app.include_router(route_route)
+app.include_router(status_route)
 
 
 if __name__ == "__main__":
