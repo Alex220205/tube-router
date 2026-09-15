@@ -76,9 +76,12 @@ export function toRouteGeoJson(route, network) {
 
     features.push({
       type: 'Feature',
+      // Colour only. A `line` property carrying the code would be the obvious
+      // companion and nothing would read it - the layer paints from `colour`
+      // and the panel beside the map already has the code. CODE_STYLE.md §10:
+      // a field with no reader is a plan, not a field.
       properties: {
         colour: lineByCode.get(leg.line)?.colour ?? UNKNOWN_LINE_COLOUR,
-        line: leg.line,
       },
       geometry: { type: 'LineString', coordinates },
     })
