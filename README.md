@@ -67,8 +67,13 @@ cd frontend && npm test
 
 ## Documentation
 
-- [`docs/COMMENTING.md`](docs/COMMENTING.md) - the commenting standard this repo holds itself to
-- [`docs/DECISIONS.md`](docs/DECISIONS.md) - one dated entry per decision, and why
+The reasoning behind this rewrite - an audit of the 2021 database, a dated
+decision log, the commenting standard the source holds itself to, and a
+per-phase record - is kept as a working document rather than published here.
+
+What is in the repository speaks for itself: every non-trivial file opens with
+a header saying what it does, what the 2021 version did, and what was wrong
+with it.
 
 ## The 2021 version
 

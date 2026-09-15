@@ -121,3 +121,12 @@ class RouteResponse(BaseModel):
         default_factory=list,
         description="One per unbroken run on a line. Empty when found is false.",
     )
+    avoided_for_disruption: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Lines excluded because TfL reports no trains running on them. "
+            "Populated whether or not a route was found, so a caller can tell "
+            "a strange-looking journey from a broken one - and can tell "
+            "'nowhere to go' from 'nowhere to go while the Piccadilly is shut'."
+        ),
+    )

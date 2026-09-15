@@ -37,7 +37,7 @@ from sqlalchemy.exc import OperationalError
 from app.core.database import SessionDep
 from app.routes import COMMON_RESPONSES
 from app.schemas.route import LegPublic, RouteRequest, RouteResponse, StationStop
-from app.services import graph_loader
+from app.services import graph_loader, status_poller
 from tube_engine import Network, Objective, Route, RouteQuery, find_route
 
 router = APIRouter(prefix="/route", tags=["route"])
@@ -48,7 +48,7 @@ router = APIRouter(prefix="/route", tags=["route"])
 OBJECTIVES = {objective.value: objective for objective in Objective}
 
 
-def _to_response(network: Network, result: Route) -> RouteResponse:
+def _to_response(network: Network, result: Route, avoided: list[str]) -> RouteResponse:
     """Turn an engine Route into the wire format, resolving names as it goes.
 
     The engine speaks in NaPTAN ids because it must not care what anything is
@@ -57,6 +57,7 @@ def _to_response(network: Network, result: Route) -> RouteResponse:
     """
     return RouteResponse(
         found=True,
+        avoided_for_disruption=avoided,
         total_seconds=result.total_seconds,
         changes=result.changes,
         step_free=result.step_free,
@@ -123,22 +124,34 @@ async def plan_route(request: RouteRequest, session: SessionDep) -> RouteRespons
                 status_code=404, detail=f"Unknown station {request.destination!r}"
             )
 
+        # Lines with no trains on them, merged into whatever the caller asked
+        # to avoid. Only closures and suspensions - a delay is reported on
+        # /status and never silently rewrites a journey, because Severe Delays
+        # often clears within the hour and rerouting someone around a line
+        # that is still moving gives them a worse trip for nothing.
+        disrupted = await status_poller.not_running_lines()
+        avoided = sorted(disrupted)
+
         result = find_route(
             network,
             RouteQuery(
                 origin=request.origin,
                 destination=request.destination,
                 objective=objective,
-                avoid_lines=frozenset(request.avoid_lines),
+                avoid_lines=frozenset(request.avoid_lines) | disrupted,
             ),
         )
 
         if isinstance(result, Route):
-            return _to_response(network, result)
+            return _to_response(network, result, avoided)
 
         # Real stations, no journey between them. A 200 with a reason: the
-        # question was well-formed and this is its answer.
-        return RouteResponse(found=False, reason=result.reason)
+        # question was well-formed and this is its answer. The avoided list
+        # goes out here too - "no route" and "no route while the Piccadilly is
+        # suspended" are different answers and a caller should see which.
+        return RouteResponse(
+            found=False, reason=result.reason, avoided_for_disruption=avoided
+        )
 
     except HTTPException:
         # First, or the handler below swallows the 404 and reports it as a 500.

@@ -28,6 +28,8 @@ WHAT'S NEW
 """
 
 import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 import redis.asyncio as redis
@@ -126,3 +128,117 @@ async def close() -> None:
     if _client is not None:
         await _client.aclose()
         _client = None
+
+
+# --- the generation key ------------------------------------------------------
+#
+# One integer that says "the graph you built is out of date". The seed bumps
+# it; graph_loader compares it against the generation its current graph was
+# built at. Phase 6 shipped without this and the seed's invalidation did
+# nothing for a running process - see docs/ISSUES.md #9.
+
+GENERATION_KEY = "tube-router:generation"
+
+
+async def read_generation() -> int | None:
+    """The current graph generation.
+
+    Returns:
+        The integer, 0 if the key has never been set, or None if Redis could
+        not be reached. None and 0 are deliberately different: "no answer" must
+        not be mistaken for "generation zero", or an unreachable Redis would
+        look like a signal to rebuild on every single request.
+    """
+    try:
+        raw = await get_client().get(GENERATION_KEY)
+    except Exception:
+        return None
+    if raw is None:
+        return 0
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        # Something else owns this key, or wrote a non-integer into it. Treat
+        # it as unknown rather than crashing a route request over it.
+        return None
+
+
+async def bump_generation() -> int | None:
+    """Mark every built graph stale. Called by the seed after it commits.
+
+    Returns:
+        The new generation, or None if Redis could not be reached.
+
+    INCR rather than read-modify-write, so two seeds running at once cannot
+    produce the same number and leave one of them invisible.
+    """
+    try:
+        return int(await get_client().incr(GENERATION_KEY))
+    except Exception:
+        return None
+
+
+# --- pub/sub -----------------------------------------------------------------
+#
+# Redis rather than an in-process list of connected sockets, because the API
+# can run more than one worker and a message published by the worker holding
+# the poller has to reach clients connected to the others. An in-process
+# broadcast works perfectly on one process and silently fails on two, which is
+# the kind of thing that is only discovered in production.
+
+
+async def publish(channel: str, value: Any) -> None:
+    """Announce a change to every subscriber, best effort.
+
+    Args:
+        channel: Channel name.
+        value: Anything json.dumps can handle.
+
+    A failure here means connected clients keep their last view until the next
+    push rather than the service breaking, which is the same trade every other
+    function in this module makes.
+    """
+    try:
+        await get_client().publish(channel, json.dumps(value))
+    except (TypeError, ValueError):
+        raise
+    except Exception:
+        return
+
+
+@asynccontextmanager
+async def subscription(channel: str) -> AsyncIterator[AsyncIterator[Any]]:
+    """Subscribe to a channel and yield decoded messages until the caller stops.
+
+    Args:
+        channel: Channel name.
+
+    Yields:
+        An async iterator of decoded JSON payloads. Messages that are not JSON
+        are skipped rather than ending the subscription - one bad publish from
+        somewhere else must not disconnect every listener.
+
+    The pub/sub object gets its own connection, so closing it is not optional:
+    a WebSocket that disconnects without unsubscribing leaks a connection per
+    client, and the leak only shows up under the load it was built for.
+    """
+    client = get_client()
+    pubsub = client.pubsub()
+    await pubsub.subscribe(channel)
+    try:
+        yield _messages(pubsub)
+    finally:
+        await pubsub.unsubscribe(channel)
+        await pubsub.aclose()
+
+
+async def _messages(pubsub: Any) -> AsyncIterator[Any]:
+    """Decoded payloads from a subscribed pubsub, one at a time."""
+    async for message in pubsub.listen():
+        if message.get("type") != "message":
+            # Subscribe confirmations and pings. Real, and not for the caller.
+            continue
+        try:
+            yield json.loads(message["data"])
+        except (TypeError, ValueError):
+            continue

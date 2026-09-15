@@ -65,3 +65,16 @@ test-results/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# --- Project documentation ---------------------------------------------------
+# AUDIT, DECISIONS, COMMENTING, CODE_STYLE, TESTS, ISSUES and the per-phase
+# write-ups are kept locally and deliberately not published. They remain the
+# working record this project is written against - the commenting standard,
+# the decision log and the issue list are all still maintained and still
+# referenced by name from source comments - but they are not part of the
+# repository.
+#
+# They were also removed from the history rather than only untracked, so no
+# earlier commit contains them either. This entry is what stops them coming
+# back the next time someone runs `git add -A`.
+docs/

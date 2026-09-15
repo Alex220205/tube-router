@@ -50,6 +50,7 @@ CONSTRAINT
 """
 
 import asyncio
+import time
 from typing import Any
 
 from geoalchemy2 import Geometry
@@ -82,6 +83,19 @@ _network: Network | None = None
 # busiest.
 _lock = asyncio.Lock()
 
+# Which generation _network was built at, and when that was last confirmed.
+_generation: int | None = None
+_checked_at = 0.0
+
+# How often to ask Redis whether the graph is stale. Not per request: a GET is
+# well under a millisecond when Redis is healthy and a 250ms timeout when it is
+# not, and core/cache.py already measured what that costs - an unreachable
+# Redis made the endpoint tests nearly three times slower.
+#
+# Five seconds bounds staleness at five seconds, costs one GET per five seconds
+# under any load, and leaves the warm path exactly as fast as it was.
+GENERATION_CHECK_SECONDS = 5.0
+
 
 async def get_network(session: AsyncSession) -> Network:
     """The routing graph, built once per process.
@@ -99,14 +113,21 @@ async def get_network(session: AsyncSession) -> Network:
         The shared Network. The same object every time, which callers may
         rely on because nothing can modify it.
     """
-    global _network
-    if _network is not None:
+    global _network, _generation, _checked_at
+
+    # Fast path, and the only one most requests take. _is_stale rate-limits
+    # itself, so this is a Redis GET at most once every few seconds.
+    if _network is not None and not await _is_stale():
         return _network
 
     async with _lock:
-        # Checked again inside the lock: several requests can arrive here
-        # together and only the first should do the work.
-        if _network is not None:
+        # One authoritative read, inside the lock, rather than calling
+        # _is_stale again - that would report "not stale" purely because it
+        # had just looked, and the rebuild would never happen.
+        generation = await cache.read_generation()
+
+        # Another request may have rebuilt while this one waited for the lock.
+        if _network is not None and generation in (None, _generation):
             return _network
 
         rows = await cache.read_json(CACHE_KEY)
@@ -115,17 +136,43 @@ async def get_network(session: AsyncSession) -> Network:
             await cache.write_json(CACHE_KEY, rows, CACHE_TTL_SECONDS)
 
         _network = network_from_rows(rows)
+        _generation = generation
+        _checked_at = time.monotonic()
         return _network
+
+
+async def _is_stale() -> bool:
+    """Whether the built graph is older than the generation Redis reports.
+
+    Returns:
+        True only on a definite mismatch. An unreachable Redis returns None,
+        which is treated as "no news" and keeps the current graph - rebuilding
+        on every request because the cache is down is how a degraded
+        dependency becomes an outage.
+    """
+    global _checked_at
+
+    now = time.monotonic()
+    if now - _checked_at < GENERATION_CHECK_SECONDS:
+        return False
+
+    generation = await cache.read_generation()
+    _checked_at = now
+    if generation is None:
+        return False
+    return generation != _generation
 
 
 def forget() -> None:
     """Drop the in-process graph so the next request rebuilds it.
 
-    For tests, and for a reseed that wants the running service to notice.
-    Does not touch Redis; call cache.delete(CACHE_KEY) for that.
+    For tests. A reseed does not need this - it bumps the generation key and
+    every running process notices within GENERATION_CHECK_SECONDS.
     """
-    global _network
+    global _network, _generation, _checked_at
     _network = None
+    _generation = None
+    _checked_at = 0.0
 
 
 async def load_network(session: AsyncSession) -> Network:

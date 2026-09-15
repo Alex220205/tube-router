@@ -347,3 +347,41 @@ async def test_a_corrupt_archive_is_reported_clearly() -> None:
     ) as tfl:
         with pytest.raises(TfLError, match="unreadable"):
             await tfl.station_data()
+
+
+async def test_line_status_calls_the_status_endpoint() -> None:
+    # Phase 7. The only endpoint here that is polled rather than read once, so
+    # the URL is worth pinning: a typo would mean the poller quietly fetched
+    # the line list forever and every line read as Good Service.
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        return httpx.Response(200, json=fixture("line_status.json"))
+
+    async with client_returning(handler) as tfl:
+        statuses = await tfl.line_status()
+
+    assert seen == ["/Line/Mode/tube/Status"]
+    assert len(statuses) == 11
+
+
+async def test_line_status_is_retried_like_every_other_call() -> None:
+    # It reuses _get_json, so the throttle, the 429 handling and the retry all
+    # apply. Asserted rather than assumed, because a poller that gave up on the
+    # first 5xx would go stale silently - there is no user watching a request
+    # fail, which is exactly what makes it worth testing.
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(503)
+        return httpx.Response(200, json=fixture("line_status.json"))
+
+    async with client_returning(handler) as tfl:
+        statuses = await tfl.line_status()
+
+    assert attempts == 2
+    assert len(statuses) == 11

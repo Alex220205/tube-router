@@ -310,12 +310,21 @@ async def main() -> int:
             await write_everything(session, raw)
         log("committed")
 
-        # The API holds a built routing graph and caches the rows behind it.
-        # Without this a reseed is invisible to a running service until the
-        # cache expires an hour later, which is exactly the kind of "it works
-        # after a restart" behaviour this project exists to stop shipping.
+        # The API holds a built routing graph. Deleting the row cache is not
+        # enough on its own - a process that has already built its graph never
+        # looks at Redis again, so Phase 6 shipped an invalidation that did
+        # nothing for a running service (docs/ISSUES.md #9).
+        #
+        # Bumping the generation is what a running process actually notices,
+        # within graph_loader.GENERATION_CHECK_SECONDS. The rows go too, or the
+        # rebuild would read the stale copy it was just told to discard.
         await cache.delete(graph_loader.CACHE_KEY)
-        log("cleared the cached network")
+        generation = await cache.bump_generation()
+        if generation is None:
+            log("WARNING: could not reach Redis; a running API will serve the")
+            log("         old network until it is restarted")
+        else:
+            log(f"network generation now {generation}")
 
         log("\nchecks:")
         results = await seed_checks.run_all(session)
