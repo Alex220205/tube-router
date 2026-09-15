@@ -1,39 +1,71 @@
 /**
- * A search box over the station list.
+ * A search box over the station list, used once per end of a journey.
  *
  * WHY THIS EXISTS
- *     The first thing in this project a person can actually use. It proves
- *     the whole chain end to end: React asks the API, the API queries
- *     Postgres, and 272 real stations come back.
+ *     Picking a station is the first thing anyone does here, and it happens
+ *     twice. One component, rendered as From and as To, so the two cannot
+ *     drift apart in behaviour.
  *
  * NO 2021 EQUIVALENT
  *     The old project's station entry was a Tkinter field reading a list held
  *     in the same process.
  *
  * WHAT'S NEW
- *     Phase 8 replaces this with the same search feeding a map and an
- *     origin/destination pair. The querying is already in useStations, so
- *     that change is to this file and not to the data path.
+ *     It is now reusable, and results are clickable. Until this phase it was
+ *     a demonstration that the API answered - it listed stations and nothing
+ *     could be done with them.
+ *
+ *     The id is a prop rather than a constant. Two copies of a hardcoded id
+ *     is invalid HTML, and the practical cost is that a label stops pointing
+ *     at its own input: screen readers announce the wrong one, clicking the
+ *     label focuses the wrong box, and getByLabelText finds two elements.
  */
 
 import { useState } from 'react'
 import { useStations } from '../hooks/useStations'
 
-export default function StationSearch() {
+/**
+ * @param {object} props
+ * @param {string} props.id Unique DOM id, tying the label to the input.
+ * @param {string} props.label What this box is for, e.g. "From".
+ * @param {object | null} props.selected The chosen station, or null.
+ * @param {(station: object | null) => void} props.onSelect Called with a
+ *   station when one is picked, and with null when the user starts editing.
+ */
+export default function StationSearch({ id, label, selected, onSelect }) {
   const [query, setQuery] = useState('')
   const { stations, loading, error } = useStations(query)
 
+  // Derived, not stored. A second piece of state saying "the list is closed"
+  // could disagree with the selection it was meant to reflect, and the two
+  // going out of step is the whole class of bug this avoids.
+  const chosen = Boolean(selected)
+
+  function handleChange(event) {
+    setQuery(event.target.value)
+
+    // Editing drops the selection. The alternative - keep it until something
+    // new is picked - leaves the box reading "Oxfo" while the route below is
+    // still from Oxford Circus, which is a lie the user has no way to spot.
+    if (selected) onSelect(null)
+  }
+
+  function choose(station) {
+    setQuery(station.name)
+    onSelect(station)
+  }
+
   return (
-    <section className="mt-6">
-      <label htmlFor="station-search" className="block text-sm font-medium">
-        Find a station
+    <section className="mt-4">
+      <label htmlFor={id} className="block text-sm font-medium">
+        {label}
       </label>
 
       <input
-        id="station-search"
+        id={id}
         type="search"
         value={query}
-        onChange={(event) => setQuery(event.target.value)}
+        onChange={handleChange}
         placeholder="oxford, bank, king's cross…"
         className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
         autoComplete="off"
@@ -43,20 +75,33 @@ export default function StationSearch() {
         <p className="mt-2 text-sm text-red-600">Could not reach the API: {error}</p>
       )}
 
-      {loading && !error && <p className="mt-2 text-sm text-gray-500">Searching…</p>}
+      {loading && !error && !chosen && (
+        <p className="mt-2 text-sm text-gray-500">Searching…</p>
+      )}
 
       {/* An empty result is a real answer, not an error. Saying so beats
           rendering an empty box the user has to interpret. */}
-      {!loading && !error && stations.length === 0 && (
+      {!loading && !error && !chosen && stations.length === 0 && (
         <p className="mt-2 text-sm text-gray-500">No stations match “{query}”.</p>
       )}
 
-      {stations.length > 0 && (
-        <ul className="mt-2 divide-y divide-gray-100 rounded-md border border-gray-200">
+      {/* Hidden once something is chosen: a list still offering alternatives
+          under a filled-in box reads as though the choice did not take. */}
+      {!chosen && stations.length > 0 && (
+        <ul className="mt-2 max-h-48 divide-y divide-gray-100 overflow-y-auto rounded-md border border-gray-200">
           {stations.map((station) => (
-            <li key={station.id} className="px-3 py-2">
-              <span>{station.name}</span>{' '}
-              <span className="text-xs text-gray-400">{station.naptan_id}</span>
+            <li key={station.id}>
+              {/* A button, not a clickable li. Tab reaches it, Enter and
+                  Space activate it, and screen readers announce it as
+                  something that does something - none of which is true of a
+                  list item with an onClick. */}
+              <button
+                type="button"
+                onClick={() => choose(station)}
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
+              >
+                {station.name}
+              </button>
             </li>
           ))}
         </ul>
