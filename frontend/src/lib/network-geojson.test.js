@@ -61,7 +61,7 @@ describe('toGeoJson', () => {
 
   it('draws each link once, though the payload lists both directions', () => {
     // Segments are directional and every link appears twice. Left alone that
-    // is 754 features for 377 lines, each stroked over itself.
+    // is 754 features for 379 links, each stroked over itself.
     const { segments } = toGeoJson(network)
 
     expect(segments.features).toHaveLength(1)

@@ -13,12 +13,12 @@ offline.
 | `route_sequence_central_inbound.json` | `GET /Line/central/Route/Sequence/inbound` | The hard case: **7 sequences**, so branch handling is tested against real branch structure |
 | `stop_points_victoria.json` | `GET /Line/victoria/StopPoints` | Coordinates and `hubNaptanCode`. 11 of 16 stations belong to a hub |
 | `timetable_victoria_wwl.json` | `GET /Line/victoria/Timetable/940GZZLUWWL` | Cumulative `timeToArrival`, from which segment durations are derived |
-| `PlatformServices.csv` | station data archive | Step-free per (station, line). Tube rows only — 851 of 1,878 |
+| `PlatformServices.csv` | station data archive | Step-free per (station, line). Tube rows only - 851 of 1,878 |
 | `StepFreeIntechangeInfo.csv` | station data archive | Platform-to-platform distances. All 114 rows |
 
 ## They are trimmed, and here is exactly how
 
-Captured whole, then reduced — the full set was 950 KB, most of it fields the
+Captured whole, then reduced - the full set was 950 KB, most of it fields the
 seed never reads. **No value was altered.** Only whole fields were removed:
 
 | File | Removed | Why |
@@ -36,6 +36,6 @@ exercise nothing the kept ones do not.
 
 ## Recapturing
 
-The capture and trim scripts are not committed — they ran once. To refresh,
+The capture and trim scripts are not committed - they ran once. To refresh,
 fetch the endpoints in the table above and apply the same removals. Expect
 coordinates and timetable values to differ slightly; TfL revises them.

@@ -44,9 +44,15 @@ export function toGeoJson(network) {
   const stationById = new Map(stations.map((station) => [station.id, station]))
   const lineById = new Map(lines.map((line) => [line.id, line]))
 
-  // Segments are directional: every link appears once each way. Drawn as-is
-  // that is 754 features for 377 lines, each stroked twice - which shows the
-  // moment anything has opacity, and is twice the data for no benefit.
+  // Segments are directional, and nearly every link appears once each way:
+  // 754 rows for 379 links. Drawn as-is that is 375 of them stroked twice,
+  // which shows the moment anything has opacity, for no benefit.
+  //
+  // Four links are genuinely one-way and must survive the dedupe rather than
+  // being treated as a missing direction: the Piccadilly's Heathrow Terminal
+  // 4 loop runs Hatton Cross to T4 to Terminals 2 & 3 and never back, and two
+  // Metropolitan links north of Finchley Road are served in one direction
+  // only. 754 / 2 would be 377, and the two it loses are real track.
   const drawn = new Set()
   const features = []
 

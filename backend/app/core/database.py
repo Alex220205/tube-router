@@ -24,7 +24,7 @@ WHAT THE 2021 VERSION DID
 WHAT CHANGED AND WHY
     Connections live in one pool, sessions are scoped to a request by
     get_db(), and the only code permitted to use them is the web service.
-    The routing engine never sees a session - backend/app/graph_loader.py
+    The routing engine never sees a session - backend/app/services/graph_loader.py
     (Phase 6) queries, converts rows to engine dataclasses, and hands those
     across. A Session is the most contagious object in a web application:
     once a function takes one, everything it calls can trigger SQL at
