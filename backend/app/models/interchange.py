@@ -4,7 +4,7 @@ The cost of changing from one line to another at a station.
 WHY THIS EXISTS
     This is the table that makes "fewest changes" a question the router can
     answer. With a row per line pair, a change is an edge with a cost, so the
-    search can count it and price it — which is what the (station, line) node
+    search can count it and price it - which is what the (station, line) node
     expansion in Phase 5 is built on.
 
 NO 2021 EQUIVALENT
@@ -53,7 +53,7 @@ class Interchange(Base):
     )
 
     # Directional, like segments. Northern to Central at Bank is not
-    # necessarily the same walk as Central to Northern — different platforms,
+    # necessarily the same walk as Central to Northern - different platforms,
     # different stairs, sometimes a different passage entirely.
     from_line_id: Mapped[int] = mapped_column(
         ForeignKey("lines.id"), comment="Line being left."
@@ -67,7 +67,7 @@ class Interchange(Base):
     )
 
     # Step-free for this particular change, which is not the same as either
-    # platform being step-free on its own — the route between them is what
+    # platform being step-free on its own - the route between them is what
     # matters.
     step_free: Mapped[bool] = mapped_column(
         default=False,

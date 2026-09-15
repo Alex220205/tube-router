@@ -7,7 +7,7 @@ WHY THIS EXISTS
 
     A model class only registers itself on Base.metadata when its module is
     imported. Alembic's env.py imports `Base` and compares `Base.metadata`
-    against the live database — so if a model's module has not been imported
+    against the live database - so if a model's module has not been imported
     by then, that table is simply absent from the comparison. Autogenerate
     does not fail. It produces a migration that drops the table, or an empty
     one, and the mistake surfaces later as missing tables in a database

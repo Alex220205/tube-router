@@ -9,7 +9,7 @@ WHY THIS EXISTS
     ever responsible for closing one.
 
 WHAT THE 2021 VERSION DID
-    Where:  database[works].py, throughout — including Traversal.Create_graph
+    Where:  database[works].py, throughout - including Traversal.Create_graph
             at lines 472-529
     How:    Every method that touched data opened its own sqlite3 connection,
             ran SQL inline, and closed it. There was no pool, no session and
@@ -24,7 +24,7 @@ WHAT THE 2021 VERSION DID
 WHAT CHANGED AND WHY
     Connections live in one pool, sessions are scoped to a request by
     get_db(), and the only code permitted to use them is the web service.
-    The routing engine never sees a session — backend/app/graph_loader.py
+    The routing engine never sees a session - backend/app/graph_loader.py
     (Phase 6) queries, converts rows to engine dataclasses, and hands those
     across. A Session is the most contagious object in a web application:
     once a function takes one, everything it calls can trigger SQL at
@@ -91,7 +91,7 @@ async def get_db() -> AsyncIterator[AsyncSession]:
 #
 # Annotated rather than a `= Depends(...)` default: a call in a default
 # argument is evaluated once at import and is a genuine bug in ordinary
-# Python — FastAPI is the exception, not the rule — so linters flag it.
+# Python - FastAPI is the exception, not the rule - so linters flag it.
 SessionDep = Annotated[AsyncSession, Depends(get_db)]
 
 

@@ -12,7 +12,7 @@ with Docker uninstalled.
 That separation is the argument this project is making, and it is a reaction
 to a specific failure: in 2021 Traversal.Create_graph opened a database cursor
 inside the graph builder, so routing could not be exercised without a live
-SQLite file. It never was — and the aliasing bug at line 532 destroyed the
+SQLite file. It never was - and the aliasing bug at line 532 destroyed the
 graph on every search, unnoticed for five years.
 
 CONSTRAINT
@@ -24,6 +24,7 @@ from .network import Network
 from .query import Objective, RouteQuery
 from .result import (
     DISCONNECTED,
+    REASONS,
     UNKNOWN_DESTINATION,
     UNKNOWN_ORIGIN,
     Leg,
@@ -37,6 +38,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     "DISCONNECTED",
+    "REASONS",
     "UNKNOWN_DESTINATION",
     "UNKNOWN_ORIGIN",
     "Edge",

@@ -2,7 +2,7 @@
  * Tests for the Phase 0 application shell.
  *
  * WHY THIS EXISTS
- *     The interesting behaviour is not that a heading renders — it is that
+ *     The interesting behaviour is not that a heading renders - it is that
  *     the three outcomes are told apart. "Degraded" (the API answered and
  *     reports Postgres is down) and "unreachable" (the API did not answer)
  *     look similar on screen and have completely different causes, so a page
@@ -16,8 +16,8 @@ import { render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 
-// fetch is stubbed rather than the api module, so api.js — the URL building
-// and the status check — is exercised by these tests too.
+// fetch is stubbed rather than the api module, so api.js - the URL building
+// and the status check - is exercised by these tests too.
 function mockHealth(payload) {
   globalThis.fetch = vi.fn().mockResolvedValue({
     ok: true,
@@ -33,7 +33,7 @@ afterEach(() => {
 describe('App', () => {
   // Status and database frequently hold the same word, so querying by text
   // alone is ambiguous. <dd> carries the implicit ARIA role "definition",
-  // which lets the three values be read positionally — and asserts they are
+  // which lets the three values be read positionally - and asserts they are
   // in the documented order as a side effect.
   const definitionValues = () =>
     screen.getAllByRole('definition').map((node) => node.textContent)

@@ -9,7 +9,7 @@
  *
  *     That last one is the reason the hook exists separately. Without
  *     cancellation a slow answer for "o" lands after a fast one for "oxford"
- *     and replaces it — the user sees results for something they finished
+ *     and replaces it - the user sees results for something they finished
  *     typing a second ago, and nothing looks broken enough to report.
  *
  * NO 2021 EQUIVALENT
@@ -47,8 +47,16 @@ describe('StationSearch', () => {
     await userEvent.type(screen.getByLabelText('Find a station'), 'oxf')
 
     expect(await screen.findByText('Oxford Circus Underground Station')).toBeInTheDocument()
-    // Debounced, so a three-character burst is not three requests.
-    expect(seen.at(-1)).toContain('q=oxf')
+
+    // Waited for, not asserted immediately. The component fetches once on
+    // mount with an empty query, and the mock answers every URL with Oxford
+    // Circus - so findByText above is satisfied by that first response, while
+    // the debounced request carrying `q=oxf` is still 250ms away. Asserting
+    // straight after it races the debounce and loses.
+    await waitFor(() => expect(seen.at(-1)).toContain('q=oxf'))
+
+    // And the burst of three keystrokes is one request, not three.
+    expect(seen.filter((url) => url.includes('q=')).length).toBe(1)
   })
 
   it('says no stations match rather than showing an empty box', async () => {
@@ -71,7 +79,7 @@ describe('StationSearch', () => {
     await waitFor(() =>
       expect(screen.getByText(/Could not reach the API/)).toBeInTheDocument(),
     )
-    // Must not also claim nothing matched — that would be two different
+    // Must not also claim nothing matched - that would be two different
     // failures wearing the same message.
     expect(screen.queryByText(/No stations match/)).not.toBeInTheDocument()
   })

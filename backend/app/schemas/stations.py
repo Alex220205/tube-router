@@ -22,7 +22,7 @@ WHAT CHANGED AND WHY
 
 WHAT'S NEW
     Coordinates as plain floats. The column is geography(Point, 4326), which
-    has no JSON representation — services/stations.py unpacks it and these
+    has no JSON representation - services/stations.py unpacks it and these
     say what comes out.
 """
 

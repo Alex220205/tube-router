@@ -13,7 +13,7 @@ WHAT THE 2021 VERSION DID
             the rest of the program used and rendered them directly, so
             nothing was ever validated or converted.
     Wrong:  Not wrong for a desktop program, but it left the display coupled
-            to internal representation — which is how the sentinel 9999999
+            to internal representation - which is how the sentinel 9999999
             from the routing code ended up being compared against inside
             GUI.Find_shortest_path to decide what to draw.
 

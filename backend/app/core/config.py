@@ -3,7 +3,7 @@ Application settings, read from the environment once and cached.
 
 WHY THIS EXISTS
     Every value the service needs that differs between a laptop, CI and a
-    host somewhere — database URL, allowed CORS origins, API keys — arrives
+    host somewhere - database URL, allowed CORS origins, API keys - arrives
     through this file and nowhere else. One place to look, one place to
     change, and a single point where a missing setting fails loudly at
     startup rather than quietly at the call site.
@@ -18,7 +18,7 @@ WHAT THE 2021 VERSION DID
             forever. Changing one meant editing several call sites and
             hoping none were missed. And there was no way to run the same
             code against different settings, because there were no settings
-            — there were literals.
+            - there were literals.
 
 WHAT CHANGED AND WHY
     Settings is a pydantic-settings model populated from environment
@@ -47,7 +47,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 #                    [0]     [1]    [2]        [3]
 #
 # Count the hops, and recount them if this file ever moves. It moved once
-# already — from backend/app/config.py to backend/app/core/config.py — and the
+# already - from backend/app/config.py to backend/app/core/config.py - and the
 # index was not updated, so _REPO_ROOT silently became backend/ and the root
 # .env stopped being read. Nothing failed for a week, because the test suite
 # sets the variables directly and Compose injects them, so the .env path is
@@ -56,7 +56,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # An absolute path rather than a bare ".env", because env_file is otherwise
 # resolved against the working directory and the API runs from backend/.
 #
-# Inside the image this resolves to /app/.env, which is not there — .env is
+# Inside the image this resolves to /app/.env, which is not there - .env is
 # gitignored and never copied in. A missing env_file is not an error, and the
 # values arrive from the environment instead.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -97,7 +97,7 @@ class Settings(BaseSettings):
 
     # Smallest gap between requests. TfL allows 50 a minute without a key and
     # a full seed makes about ninety, so without this the run gets a third of
-    # the way through and then starts getting 429s — which is how the value
+    # the way through and then starts getting 429s - which is how the value
     # came to be here. With a key the limit is far higher and this can drop.
     tfl_min_request_interval_seconds: float = 1.3
 
@@ -106,7 +106,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
 
     # No log_level here. It existed in .env.example, in docker-compose.yml and
-    # on this model, and nothing read it — uvicorn's level is not set from it.
+    # on this model, and nothing read it - uvicorn's level is not set from it.
     # A setting that looks configurable and is not is worse than an absent
     # one, because it sends you looking for the bug somewhere else. It comes
     # back when something actually configures logging.

@@ -15,7 +15,7 @@ WHAT THE 2021 VERSION DID
 
                 if Shortest.show_Shortest_path() == 9999999:
 
-            and line 876 compares against it again — inside the user
+            and line 876 compares against it again - inside the user
             interface. A magic number invented by the search had become part
             of the contract between the algorithm and the window, and any
             code that forgot to check it would render 9999999 as a journey
@@ -31,8 +31,8 @@ WHAT CHANGED AND WHY
     and a half months.
 
 WHAT'S NEW
-    Leg. The old result was a flat list of station names — Track_path, built
-    by walking predecessors backwards at lines 562-571 — with no record of
+    Leg. The old result was a flat list of station names - Track_path, built
+    by walking predecessors backwards at lines 562-571 - with no record of
     which line each hop was on, so it could not tell you where to change. A
     line on a map does not tell you that either; the leg list is the actual
     answer.
@@ -54,7 +54,7 @@ class Leg:
         line: The line ridden.
         stations: Every station passed through, in order, including both ends.
             A leg of one hop has two entries.
-        seconds: Time on this line. Excludes the change that follows it —
+        seconds: Time on this line. Excludes the change that follows it -
             interchange time belongs to the route total, not to either leg,
             because it is spent walking rather than travelling.
     """
@@ -78,7 +78,7 @@ class Route:
             non-empty route, and kept as a field because it is the thing
             callers actually want to show.
         step_free: True when every edge and interchange used is step-free.
-            Reporting it is not the same as routing on it — routing on it is
+            Reporting it is not the same as routing on it - routing on it is
             Phase 5.
     """
 

@@ -3,15 +3,15 @@ Stations, and the complexes that group physically connected ones.
 
 WHY THIS EXISTS
     Everything else in the schema points at a station. Getting its identity
-    right — one row per physical station, with a stable external key and a
-    real location — is what the rest of the model rests on.
+    right - one row per physical station, with a stable external key and a
+    real location - is what the rest of the model rests on.
 
 WHAT THE 2021 VERSION DID
     Where:  train_stations.db, `stations` table
     How:    (station_id, name). Two columns, 486 rows.
     Wrong:  Three things, all confirmed in docs/AUDIT.md.
             1. 486 rows for 346 actual stations, because it was secretly one
-               row per (station, line) — King's Cross appears six times —
+               row per (station, line) - King's Cross appears six times -
                with nothing in the schema saying so. Traversal.Create_graph
                had to rediscover the grouping by deduplicating name strings
                at lines 476-480, on every single search.
@@ -29,8 +29,8 @@ WHAT CHANGED AND WHY
 
 WHAT'S NEW
     station_complexes. Bank and Monument are one interchange under two names,
-    and without this they are either one station — wrong, separate platforms
-    and a real walk — or two unrelated stations, which is wrong in the other
+    and without this they are either one station - wrong, separate platforms
+    and a real walk - or two unrelated stations, which is wrong in the other
     direction because you can change between them.
 """
 
@@ -53,7 +53,7 @@ class StationComplex(Base):
         String(255), comment="Name of the complex, e.g. 'Bank and Monument'."
     )
 
-    # TfL's hubNaptanCode — HUBBAN for Bank/Monument. Its presence is what
+    # TfL's hubNaptanCode - HUBBAN for Bank/Monument. Its presence is what
     # makes complexes derivable from the source rather than a hand-curated
     # list of special cases. Nullable because most stations belong to no hub.
     tfl_hub_id: Mapped[str | None] = mapped_column(

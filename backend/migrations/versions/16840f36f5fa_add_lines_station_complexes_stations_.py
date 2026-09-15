@@ -21,9 +21,9 @@ wrong rather than preferences:
    exists". The explicit drop at the end of downgrade fixes it, and the
    reversibility test covers it.
 
-Every constraint here is named by the convention on Base.metadata —
+Every constraint here is named by the convention on Base.metadata -
 ck_segments_seconds_positive rather than whatever Postgres would have
-invented — so a later migration can reference one by a name that is derivable
+invented - so a later migration can reference one by a name that is derivable
 rather than looked up in psql.
 """
 
@@ -90,7 +90,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name=op.f("pk_stations")),
         sa.UniqueConstraint("naptan_id", name=op.f("uq_stations_naptan_id")),
     )
-    # GiST, not btree. A btree index on a geography column is useless — it can
+    # GiST, not btree. A btree index on a geography column is useless - it can
     # order values but cannot answer "within this distance of that point",
     # which is the only question ever asked of this column.
     op.create_index(

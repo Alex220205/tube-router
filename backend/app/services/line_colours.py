@@ -3,7 +3,7 @@ Official line colours, which the TfL API does not serve.
 
 WHY THIS EXISTS
     Every other attribute of a line comes from /Line/Mode/tube. Colour does
-    not — TfL publishes it in their design standards and nowhere in the
+    not - TfL publishes it in their design standards and nowhere in the
     Unified API. Without it the frontend cannot draw a recognisable tube map,
     so lines.colour is NOT NULL and this table is where the values come from.
 
@@ -13,8 +13,8 @@ NO 2021 EQUIVALENT
 
 WHAT'S NEW
     Hardcoded data with a citation, which is the honest form for something
-    that has no programmatic source. The alternative — inventing colours, or
-    leaving the column nullable and letting the frontend guess — would be
+    that has no programmatic source. The alternative - inventing colours, or
+    leaving the column nullable and letting the frontend guess - would be
     worse in both directions.
 """
 

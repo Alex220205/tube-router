@@ -4,7 +4,7 @@ and closes the connection pool on shutdown.
 
 WHY THIS EXISTS
     One place where the application is assembled, and deliberately nothing
-    else. No endpoints are defined here — they live in routes/ — so this file
+    else. No endpoints are defined here - they live in routes/ - so this file
     stays a readable index of what the service exposes.
 
 WHAT THE 2021 VERSION DID
@@ -41,11 +41,13 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .core.cache import close as close_cache
 from .core.config import get_settings
 from .core.database import dispose_engine
 from .routes.health import router as health_route
 from .routes.lines import router as lines_route
 from .routes.network import router as network_route
+from .routes.route import router as route_route
 from .routes.stations import router as stations_route
 
 settings = get_settings()
@@ -55,12 +57,16 @@ settings = get_settings()
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Start-up and shut-down work, either side of the yield.
 
-    Nothing happens on the way in. On the way out the connection pool is
-    closed, which is the part that matters — an unclean exit leaves
-    connections lingering on the Postgres side until it times them out.
+    Nothing happens on the way in. The routing graph is built on first use
+    instead, so a slow or empty database does not stop the service starting -
+    Phase 0 established that /health must be able to report "degraded".
+
+    On the way out both pools are closed. An unclean exit leaves connections
+    lingering on the Postgres side until it times them out.
     """
     yield
     await dispose_engine()
+    await close_cache()
 
 
 app = FastAPI(
@@ -79,19 +85,21 @@ app.add_middleware(
 )
 
 # One line per resource. Explicit rather than routed through an aggregator,
-# so this file is the list of what the API serves — adding an endpoint module
+# so this file is the list of what the API serves - adding an endpoint module
 # means adding it here, which is a visible change rather than a silent one.
 #
-# route joins in Phase 6; status and the status websocket in Phase 7.
+# Explicit rather than aggregated, so this file reads as an index of what the
+# service serves. status and the status websocket join in Phase 7.
 app.include_router(health_route)
 app.include_router(stations_route)
 app.include_router(lines_route)
 app.include_router(network_route)
+app.include_router(route_route)
 
 
 if __name__ == "__main__":
     # For running the API directly during development:
     #     cd backend && uv run python -m app.main
-    # The container does not use this path — its CMD invokes uvicorn itself,
+    # The container does not use this path - its CMD invokes uvicorn itself,
     # so host and port come from the Dockerfile rather than from here.
     uvicorn.run(app, host="127.0.0.1", port=8000)

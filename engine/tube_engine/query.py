@@ -4,7 +4,7 @@ What a caller asks for: an origin, a destination and an objective.
 WHY THIS EXISTS
     One object rather than a widening list of arguments. find_route takes a
     network and a query, so Phase 5 added "avoid these lines" by changing this
-    file rather than every call site — which is exactly the cost the shape was
+    file rather than every call site - which is exactly the cost the shape was
     chosen to avoid.
 
 WHAT THE 2021 VERSION DID
@@ -13,13 +13,13 @@ WHAT THE 2021 VERSION DID
             that also held the graph, the distance table and the result. One
             object was the question, the working memory and the answer.
     Wrong:  Because the question and the working memory shared an object, a
-            second search reused the first one's state — and since line 532
+            second search reused the first one's state - and since line 532
             aliased the graph and line 557 emptied it, the second search had
             nothing left to traverse.
 
 WHAT CHANGED AND WHY
     A query is a frozen value. It carries no state, is safe to reuse, and can
-    be compared — which is what lets the regression test in test_routing.py
+    be compared - which is what lets the regression test in test_routing.py
     run the same query twice and assert both answers match.
 
 WHAT'S NEW
@@ -63,7 +63,7 @@ class RouteQuery:
         objective: What to optimise for.
         avoid_lines: Lines the route may not use. Honoured by
             Network.without_lines(), which is why the field arrives in the
-            same phase as that method rather than earlier — a field that looks
+            same phase as that method rather than earlier - a field that looks
             configurable and is silently ignored is a mistake this project
             already made once with LOG_LEVEL and recorded in
             docs/DECISIONS.md.

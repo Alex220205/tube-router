@@ -26,7 +26,7 @@ WHAT THE 2021 VERSION DID
 
 WHAT CHANGED AND WHY
     heapq, so the next node is popped in log time rather than found by
-    scanning — which makes the comment at line 530 true for the first time.
+    scanning - which makes the comment at line 530 true for the first time.
 
     Nodes are (station, line) pairs, so a change is an edge with a cost. That
     is what fixes (3), and Phase 5 proved the claim: fewest-changes arrived by
@@ -109,7 +109,7 @@ def _by_time(cost: Cost, seconds: int, is_change: bool) -> Cost:
     The second element is a tie-break, not a preference: it only ever decides
     between routes of identical duration. Without it the real network hands
     back things like Snaresbrook to Barons Court in 48 minutes with three
-    changes, when a 48-minute route with one change exists — both optimal by
+    changes, when a 48-minute route with one change exists - both optimal by
     time, and the search returning whichever it reached first.
 
     That is not merely worse to read. It makes the answer depend on heap
@@ -132,7 +132,7 @@ def _by_changes(cost: Cost, seconds: int, is_change: bool) -> Cost:
 
 
 # STEP_FREE is deliberately the same model as FASTEST. It is not a third
-# algorithm — it is this search run against Network.step_free_only(), which is
+# algorithm - it is this search run against Network.step_free_only(), which is
 # why adding it cost a dictionary entry rather than a function.
 _COST_MODELS: dict[Objective, _CostModel] = {
     Objective.FASTEST: _CostModel(start=(0, 0), advance=_by_time),
@@ -145,7 +145,7 @@ def find_route(network: Network, query: RouteQuery) -> Route | NoRoute:
     """Find the best route between two stations.
 
     Args:
-        network: The graph to search. Not modified — the search keeps its own
+        network: The graph to search. Not modified - the search keeps its own
             distance and predecessor tables and never writes to the network.
         query: Origin, destination and objective.
 
@@ -172,13 +172,31 @@ def find_route(network: Network, query: RouteQuery) -> Route | NoRoute:
         raise NotImplementedError(f"no cost model for {query.objective}")
 
     # Filters first, then search whatever survives. Both return a new Network,
-    # so the caller's graph is never altered — which is what makes it safe for
+    # so the caller's graph is never altered - which is what makes it safe for
     # Phase 6 to hold one built network and serve concurrent requests from it.
     searchable = network.without_lines(query.avoid_lines)
-    if query.objective is Objective.STEP_FREE:
+    step_free = query.objective is Objective.STEP_FREE
+    if step_free:
         searchable = searchable.step_free_only()
 
-    found = _search(searchable, query.origin, query.destination, model)
+    # A step-free journey has to begin on a platform you can reach and end on
+    # one you can leave. The changes between are already filtered out of the
+    # graph; these two ends are the part only the search knows about, because
+    # only it knows which platform you arrive on.
+    if step_free:
+        starts = searchable.step_free_lines_at(query.origin)
+
+        def accept(station_id: StationId, line: LineId) -> bool:
+            return station_id == query.destination and searchable.step_free_at(
+                station_id, line
+            )
+    else:
+        starts = searchable.lines_at(query.origin)
+
+        def accept(station_id: StationId, line: LineId) -> bool:
+            return station_id == query.destination
+
+    found = _search(searchable, query.origin, starts, accept, model)
     if found is None:
         return NoRoute(DISCONNECTED)
 
@@ -190,30 +208,34 @@ def find_route(network: Network, query: RouteQuery) -> Route | NoRoute:
 def _search(
     network: Network,
     origin: StationId,
-    destination: StationId,
+    starts: frozenset[LineId],
+    accept: Callable[[StationId, LineId], bool],
     model: _CostModel,
 ) -> tuple[dict[Node, Arrival], Node] | None:
-    """Dijkstra from every line at the origin to the first line at the target.
+    """Dijkstra from a set of starting platforms to the first accepted one.
 
-    One traversal for every objective. Only the cost model differs, because
-    "fewest changes" is not a different way of walking the graph — it is the
-    same walk measured differently.
+    One traversal for every objective. Only three things differ: where it may
+    begin, what counts as arriving, and how a journey is measured. "Fewest
+    changes" is not a different way of walking the graph - it is the same walk
+    measured differently, and step-free is the same walk begun and ended in
+    fewer places.
 
     Args:
         network: The graph, already filtered. Read only.
         origin: Where to start.
-        destination: Where to stop.
+        starts: Which lines at the origin may be boarded. Standing there you
+            are not yet on any line, so each is a starting node at zero cost -
+            which avoids inventing a virtual "on no line" node and the special
+            cases that come with it.
+        accept: Given a station and the line arrived on, whether the journey
+            is over. A plain destination check for most objectives; step-free
+            additionally requires the platform be one you can leave.
         model: How to measure a journey.
 
     Returns:
         The predecessor table and the node the search finished on, or None if
         the destination cannot be reached.
     """
-    # Standing at the origin you are not yet on any line, so every line
-    # serving it is a valid starting node at zero cost. This avoids inventing
-    # a virtual "on no line" node and the special cases that would come with
-    # it.
-    starts = network.lines_at(origin)
     if not starts:
         return None
 
@@ -222,7 +244,7 @@ def _search(
 
     # (cost, station, line) rather than (cost, node). Tuples compare element
     # by element, and on a tie heapq would otherwise try to order the node
-    # tuples themselves — which works but makes the ordering depend on station
+    # tuples themselves - which works but makes the ordering depend on station
     # ids. Naming the fields keeps ties deterministic and the intent visible.
     heap: list[tuple[Cost, StationId, LineId]] = []
     for line in sorted(starts):
@@ -239,7 +261,7 @@ def _search(
         if cost > best.get(node, cost):
             continue
 
-        if station_id == destination:
+        if accept(station_id, line):
             return came_from, node
 
         # Riding one stop stays on the same line.
@@ -312,7 +334,7 @@ def _build_route(
 
     # Walk back to the start, collecting each step and whether it was a
     # change. Reversed at the end rather than inserting at the front, which
-    # the 2021 code did at line 564 — O(n^2) on a list, though at tube scale
+    # the 2021 code did at line 564 - O(n^2) on a list, though at tube scale
     # that was never the problem with it.
     steps: list[tuple[Node, Node, bool]] = []
     while node in came_from:
@@ -336,8 +358,8 @@ def _build_route(
             total_seconds += interchange.seconds
             step_free = step_free and interchange.step_free
             # Only close a leg that actually went somewhere. Changing line at
-            # the origin without riding first cannot be optimal — every line
-            # at the origin is already seeded at zero — but a leg of one
+            # the origin without riding first cannot be optimal - every line
+            # at the origin is already seeded at zero - but a leg of one
             # station and no seconds would be nonsense if it ever happened,
             # and silently emitting one is how a route grows a phantom hop.
             if len(stations) > 1:
@@ -352,7 +374,6 @@ def _build_route(
         edge = _find_edge(network, from_station, to_station, from_line)
         total_seconds += edge.seconds
         leg_seconds += edge.seconds
-        step_free = step_free and edge.step_free
         stations.append(to_station)
         line = from_line
 
@@ -365,8 +386,31 @@ def _build_route(
         # A journey with two legs involved one change. Derived rather than
         # counted separately, so the two can never disagree.
         changes=max(len(legs) - 1, 0),
-        step_free=step_free,
+        # The two ends, plus the changes accumulated above. Riding contributes
+        # nothing - you need no accessible route at a station you stay on the
+        # train through - so this is the whole of what "step-free" means for a
+        # journey. Reported for every objective, not only STEP_FREE, which is
+        # why it is computed here rather than assumed from the filtering.
+        step_free=step_free and _ends_are_step_free(network, legs),
     )
+
+
+def _ends_are_step_free(network: Network, legs: list[Leg]) -> bool:
+    """Whether you can board at the start and alight at the end.
+
+    Args:
+        network: The graph, which holds platform accessibility.
+        legs: The assembled journey. Empty for origin == destination, which is
+            step-free because it involves no travelling.
+
+    Returns:
+        True when both end platforms are reachable step-free.
+    """
+    if not legs:
+        return True
+    boarding = network.step_free_at(legs[0].stations[0], legs[0].line)
+    alighting = network.step_free_at(legs[-1].stations[-1], legs[-1].line)
+    return boarding and alighting
 
 
 def _find_edge(
@@ -376,7 +420,7 @@ def _find_edge(
 
     Raises:
         LookupError: If no such edge exists, which would mean the predecessor
-            table disagrees with the graph — a bug in this file rather than
+            table disagrees with the graph - a bug in this file rather than
             bad input.
     """
     for edge in network.edges_from(origin):
@@ -391,7 +435,7 @@ def _find_interchange(
     """The interchange the search used for one change.
 
     Raises:
-        LookupError: As above — an inconsistency between the search and the
+        LookupError: As above - an inconsistency between the search and the
             graph, not a missing route.
     """
     for interchange in network.interchanges_at(station_id):

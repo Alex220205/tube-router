@@ -8,7 +8,7 @@ WHY THIS EXISTS
 NO 2021 EQUIVALENT
     The old project drew no map. Its equivalent of a network was a dict of
     dicts rebuilt from SQL on every search and discarded afterwards, which is
-    why nothing could ever ask a question about the graph as a whole — not
+    why nothing could ever ask a question about the graph as a whole - not
     even whether it was connected. It was not: 244 of 346 stations.
 
 WHAT'S NEW

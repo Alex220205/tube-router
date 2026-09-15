@@ -7,7 +7,7 @@
  *     when either does, and components stay about rendering.
  *
  * NO 2021 EQUIVALENT
- *     The old project had no client and no server — the GUI called methods
+ *     The old project had no client and no server - the GUI called methods
  *     on objects in the same process. Everything here exists because the
  *     browser and the data are now in different places.
  *
@@ -23,7 +23,7 @@ const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
 // fetch has no default timeout. A server that accepts the connection and then
 // never answers leaves the page waiting indefinitely, showing "Checking…"
-// forever with no error and nothing to distinguish it from a slow network —
+// forever with no error and nothing to distinguish it from a slow network -
 // the one failure mode that looks identical to success in progress.
 const TIMEOUT_MS = 5000
 
@@ -32,7 +32,7 @@ const TIMEOUT_MS = 5000
  *
  * @param {string} path Path beginning with a slash, e.g. "/health".
  * @param {AbortSignal} [signal] Cancels the request if the caller loses
- *   interest — a search superseded by more typing, for example.
+ *   interest - a search superseded by more typing, for example.
  * @returns {Promise<object>} The parsed response body.
  * @throws {Error} If the request times out, fails, or returns a non-2xx status.
  */
@@ -60,8 +60,8 @@ async function getJson(path, signal) {
   }
 
   if (!response.ok) {
-    // The status matters to the caller — a 404 and a 503 mean different
-    // things — so it goes in the message rather than being flattened into a
+    // The status matters to the caller - a 404 and a 503 mean different
+    // things - so it goes in the message rather than being flattened into a
     // generic failure.
     throw new Error(`GET ${path} failed: ${response.status}`)
   }

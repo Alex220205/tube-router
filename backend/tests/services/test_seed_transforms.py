@@ -9,7 +9,7 @@ WHY THIS EXISTS
 
     That is the point of separating them from tfl.py. In 2021 the fetch, the
     transform and the write were one function, so there was no point at which
-    a value could be inspected before it was stored — and docs/AUDIT.md
+    a value could be inspected before it was stored - and docs/AUDIT.md
     records what got stored: 12 zero-minute links, two disconnected Central
     line branches, no coordinates at all.
 
@@ -353,7 +353,7 @@ def test_consecutive_stops_become_directional_segments() -> None:
 
 def test_segments_are_never_joined_across_branches() -> None:
     # Two sequences are two branches. Joining the last stop of one to the
-    # first of the next would invent track that does not exist — the mirror
+    # first of the next would invent track that does not exist - the mirror
     # of the 2021 fault, where real track was missing and two Central line
     # branches became unreachable.
     payload = {
@@ -373,7 +373,7 @@ def test_segments_are_never_joined_across_branches() -> None:
 def test_a_zero_length_gap_is_floored_and_counted() -> None:
     # TfL's whole-minute timetables make this inevitable. A zero-weight edge
     # tells the router the hop is free, which is worse than a missing edge
-    # because it produces a confident wrong answer — and it is exactly the
+    # because it produces a confident wrong answer - and it is exactly the
     # defect the audit found twelve of. The count is returned so the seed can
     # report it rather than swallow it.
     payload = {"stopPointSequences": [{"stopPoint": [{"id": "A"}, {"id": "B"}]}]}
@@ -504,7 +504,7 @@ def test_an_unmeasured_change_between_accessible_platforms_is_step_free() -> Non
     # Inferred, not measured: both platforms are step-free, so the change can
     # normally be made via the lifts. TfL measures only a few hundred pairs
     # network-wide, and requiring the measurement marked 6 of 312 changes
-    # step-free — which left the step-free network in fragments and made the
+    # step-free - which left the step-free network in fragments and made the
     # objective answer "no route" for essentially every real journey.
     station_lines = [
         StationLineRow("S", "victoria", True),
@@ -548,6 +548,70 @@ def test_a_measured_interchange_uses_the_distance_and_is_step_free() -> None:
     assert unmeasured.seconds == DEFAULT_INTERCHANGE_SECONDS
 
 
+def test_a_chained_walk_never_undercuts_the_direct_one() -> None:
+    """The real Green Park numbers, and the bug they caused.
+
+    TfL measures the same corridor whole and in halves: jubilee to victoria is
+    380 m, and jubilee to piccadilly to victoria is 220 + 160 - the same 380 m.
+    Rounding each to whole seconds independently gives 317 direct against
+    183 + 133 = 316 decomposed, so the router could save a second by walking
+    through a platform it never boards.
+
+    Two of 6006 real routes did exactly that, and reported a total their own
+    legs could not account for.
+    """
+    station_lines = [
+        StationLineRow("940GZZLUGPK", "jubilee", True),
+        StationLineRow("940GZZLUGPK", "piccadilly", True),
+        StationLineRow("940GZZLUGPK", "victoria", True),
+    ]
+    distances = {
+        ("940GZZLUGPK", "jubilee", "victoria"): 380,
+        ("940GZZLUGPK", "victoria", "jubilee"): 380,
+        ("940GZZLUGPK", "jubilee", "piccadilly"): 220,
+        ("940GZZLUGPK", "piccadilly", "jubilee"): 220,
+        ("940GZZLUGPK", "piccadilly", "victoria"): 160,
+        ("940GZZLUGPK", "victoria", "piccadilly"): 160,
+    }
+
+    rows = interchanges_from_station_lines(station_lines, distances)
+    seconds = {(r.from_line_code, r.to_line_code): r.seconds for r in rows}
+
+    # 317 direct would be beatable by 183 + 133. Closed to the shorter one.
+    assert seconds[("jubilee", "victoria")] == 316
+    assert seconds[("victoria", "jubilee")] == 316
+    # The halves are untouched - nothing shorter runs through them.
+    assert seconds[("jubilee", "piccadilly")] == 183
+    assert seconds[("piccadilly", "victoria")] == 133
+
+    # The property, stated directly: no two-step walk beats a one-step walk.
+    for a, b in seconds:
+        for via in {"jubilee", "piccadilly", "victoria"} - {a, b}:
+            assert seconds[(a, b)] <= seconds[(a, via)] + seconds[(via, b)]
+
+
+def test_closure_improves_a_default_that_has_a_measured_path_through() -> None:
+    # A pair with no measurement of its own would take the flat 180-second
+    # default, even when two measured walks connect it in 120. The default is
+    # a stated guess and real measurements should beat it.
+    station_lines = [
+        StationLineRow("S", "a", True),
+        StationLineRow("S", "b", True),
+        StationLineRow("S", "c", True),
+    ]
+    distances = {
+        ("S", "a", "b"): 72,  # 60s
+        ("S", "b", "c"): 72,  # 60s
+    }
+
+    rows = interchanges_from_station_lines(station_lines, distances)
+    seconds = {(r.from_line_code, r.to_line_code): r.seconds for r in rows}
+
+    assert seconds[("a", "c")] == 120
+    # The reverse has no measured path at all, so it keeps the default.
+    assert seconds[("c", "a")] == DEFAULT_INTERCHANGE_SECONDS
+
+
 def test_no_interchange_is_instant() -> None:
     station_lines = [
         StationLineRow("S", "victoria", True),
@@ -585,7 +649,7 @@ def test_station_line_membership_comes_from_the_sequences() -> None:
         ("B", "central"),
         ("C", "central"),
     }
-    # B is on two lines — one station, two rows. The relationship the 2021
+    # B is on two lines - one station, two rows. The relationship the 2021
     # schema expressed by duplicating the station instead.
     b_central = next(r for r in rows if r.naptan_id == "B" and r.line_code == "central")
     b_victoria = next(

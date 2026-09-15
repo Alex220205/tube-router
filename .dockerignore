@@ -3,7 +3,7 @@
 # large and platform-specific.
 #
 # Patterns here are anchored to the context root, so `node_modules/` alone
-# would match only a top-level one and miss frontend/node_modules — which is
+# would match only a top-level one and miss frontend/node_modules - which is
 # most of the context. Hence the ** prefixes.
 
 .git/

@@ -6,7 +6,7 @@ Populate the database from the TfL Unified API.
 WHY THIS EXISTS
     A one-off script, deliberately outside app/ because it is not part of the
     running service and nothing in app/ imports it. It fetches, transforms,
-    writes and then checks — four steps in that order, each of which can be
+    writes and then checks - four steps in that order, each of which can be
     read on its own.
 
 WHAT THE 2021 VERSION DID
@@ -27,7 +27,7 @@ WHAT CHANGED AND WHY
     in services/seed_checks.py pass.
 
 WHAT'S NEW
-    The data source. The 2021 database is no longer the input — it is the
+    The data source. The 2021 database is no longer the input - it is the
     artifact this is measured against.
 """
 
@@ -37,6 +37,7 @@ import sys
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import cache
 from app.core.config import get_settings
 from app.core.database import SessionLocal, engine
 from app.models import (
@@ -48,7 +49,7 @@ from app.models import (
     StationLine,
     TransportMode,
 )
-from app.services import seed_checks
+from app.services import graph_loader, seed_checks
 from app.services.seed import (
     complexes_from_stations,
     durations_from_timetable,
@@ -309,13 +310,20 @@ async def main() -> int:
             await write_everything(session, raw)
         log("committed")
 
+        # The API holds a built routing graph and caches the rows behind it.
+        # Without this a reseed is invisible to a running service until the
+        # cache expires an hour later, which is exactly the kind of "it works
+        # after a restart" behaviour this project exists to stop shipping.
+        await cache.delete(graph_loader.CACHE_KEY)
+        log("cleared the cached network")
+
         log("\nchecks:")
         results = await seed_checks.run_all(session)
 
     failed = [result for result in results if not result.passed]
     for result in results:
         mark = "PASS" if result.passed else "FAIL"
-        log(f"  [{mark}] {result.name} — {result.detail}")
+        log(f"  [{mark}] {result.name} - {result.detail}")
 
     await engine.dispose()
 

@@ -14,7 +14,7 @@ and Traversal.Create_graph had to rediscover the grouping by deduplicating
 name strings on every single search.
 
 interchanges has no 2021 equivalent whatsoever. Changing line had no
-representation — not a missing column, a missing idea — which is why the old
+representation - not a missing column, a missing idea - which is why the old
 router could neither count changes nor weight them. A row per line pair makes
 a change an edge with a cost, which is what the (station, line) node
 expansion in the engine will be built on.
@@ -24,7 +24,7 @@ needed no edits: no geography column, so no missing geoalchemy2 import, and
 no new enum type, so nothing left behind on downgrade.
 
 Both step-free flags carry a server_default as well as a Python-side default,
-so the guarantee holds for a bulk insert that bypasses the ORM — which is
+so the guarantee holds for a bulk insert that bypasses the ORM - which is
 what a seed script tends to do.
 """
 

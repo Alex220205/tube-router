@@ -2,8 +2,8 @@
 Tests for the graph itself.
 
 WHY THIS EXISTS
-    Network has one job — answer adjacency questions quickly and never change
-    — and the second half is the one worth testing. The 2021 search destroyed
+    Network has one job - answer adjacency questions quickly and never change
+    - and the second half is the one worth testing. The 2021 search destroyed
     the graph it was searching: line 532 aliased it instead of copying, line
     557 popped from it, so a second search on the same object traversed
     nothing. Nobody noticed for five years because nothing ever searched
@@ -16,7 +16,7 @@ WHY THIS EXISTS
 
 NO 2021 EQUIVALENT
     There were no tests. Create_graph opened a database cursor inside the
-    graph builder, so writing one meant first building a SQLite file — which
+    graph builder, so writing one meant first building a SQLite file - which
     is exactly why none exists.
 
 CONSTRAINT
@@ -26,13 +26,18 @@ CONSTRAINT
 
 import pytest
 from fixtures import (
+    change,
     diamond,
     one_way_pair,
+    ride,
     single_station,
+    station,
     step_free_is_slower,
     straight_line,
     two_lines,
 )
+
+from tube_engine import Network
 
 
 def test_adjacency_is_indexed_by_origin() -> None:
@@ -54,7 +59,7 @@ def test_edges_from_an_unknown_station_is_empty_not_an_error() -> None:
 
 def test_lines_at_includes_a_terminus() -> None:
     # The search seeds itself from lines_at(origin), so a station you can only
-    # arrive at still has to report its line — otherwise every route ending at
+    # arrive at still has to report its line - otherwise every route ending at
     # a terminus would be unreachable.
     network = one_way_pair()
 
@@ -95,20 +100,57 @@ def test_a_station_that_does_not_exist_raises_rather_than_returning_none() -> No
         diamond().station("NOWHERE")
 
 
-def test_step_free_only_keeps_every_station_and_drops_only_the_steps() -> None:
-    # Keeping the stations is what preserves the difference between "that
-    # station does not exist" and "you cannot get there step-free". Dropping
-    # D here would make the engine deny a station it can see.
+def test_step_free_only_keeps_every_station_and_every_ride() -> None:
+    """Rides survive the filter, which is the whole correction of Phase 6.
+
+    You need no accessible route at a station you stay on the train through,
+    so filtering rides by the accessibility of their endpoints removes
+    journeys that are perfectly possible - it left 123 of 754 real rides.
+    What a step-free journey needs is an accessible origin platform,
+    accessible changes, and an accessible destination platform.
+
+    Keeping every station matters for a second reason: dropping D would turn
+    "you cannot get there step-free" into "that station does not exist".
+    """
     network = step_free_is_slower()
 
     accessible = network.step_free_only()
 
     assert len(accessible) == len(network) == 4
     assert "D" in accessible
-    # Only the inaccessible hop goes. B keeps its step-free ride back to A, so
-    # D becomes unreachable on red without B vanishing from the network.
-    assert {edge.destination for edge in accessible.edges_from("B")} == {"A"}
-    assert {edge.destination for edge in network.edges_from("B")} == {"A", "D"}
+    # Every ride is still there, including the one into an inaccessible
+    # platform - you simply will not be able to get out at the far end.
+    assert {edge.destination for edge in accessible.edges_from("B")} == {"A", "D"}
+
+
+def test_step_free_only_drops_a_change_that_is_not_step_free() -> None:
+    # The changes are the part it does filter, and the part the search cannot
+    # check for itself once the route is assembled.
+    network = Network(
+        stations=[station("A"), station("B")],
+        edges=[*ride("A", "B", "red", 60), *ride("A", "B", "blue", 60)],
+        interchanges=[
+            *change("A", "red", "blue", 60, step_free=False),
+            *change("B", "red", "blue", 60),
+        ],
+    )
+
+    accessible = network.step_free_only()
+
+    assert accessible.interchanges_at("A") == ()
+    assert accessible.interchanges_at("B") != ()
+
+
+def test_platform_accessibility_is_per_line_not_per_station() -> None:
+    # Green Park is step-free on the Victoria line and not on the Piccadilly.
+    # A station-level flag would have to pick one and be wrong about the
+    # other, which is why Station lost its step_free field in Phase 6.
+    network = step_free_is_slower()
+
+    assert network.step_free_at("D", "blue") is True
+    assert network.step_free_at("D", "red") is False
+    assert network.step_free_lines_at("D") == frozenset({"blue"})
+    assert network.step_free_lines_at("B") == frozenset()
 
 
 def test_without_lines_drops_an_interchange_when_either_side_names_the_line() -> None:
@@ -127,7 +169,7 @@ def test_filtering_leaves_the_original_network_untouched() -> None:
     """The 2021 regression, in the place Phase 5 could reintroduce it.
 
     A filter that edited in place would make the graph depend on which query
-    ran last — line 532's aliasing bug with a new spelling.
+    ran last - line 532's aliasing bug with a new spelling.
     """
     network = two_lines()
     edges_before = network.edges_from("B")

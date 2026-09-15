@@ -40,7 +40,7 @@ export default function App() {
 
     fetchHealth()
       .then((payload) => {
-        // The component can unmount before the request settles — in
+        // The component can unmount before the request settles - in
         // development, React's StrictMode guarantees it by mounting twice.
         // Setting state afterwards is a warning and a leak.
         if (cancelled) return
@@ -61,7 +61,7 @@ export default function App() {
   return (
     <main className="mx-auto max-w-xl p-8 font-sans">
       <h1 className="text-2xl font-semibold">Tube Router</h1>
-      <p className="mt-1 text-sm text-gray-500">Phase 0 — scaffold</p>
+      <p className="mt-1 text-sm text-gray-500">Plan a journey on the London Underground</p>
 
       <section className="mt-6 rounded-lg border border-gray-200 p-4">
         <h2 className="text-sm font-medium tracking-wide text-gray-500 uppercase">
