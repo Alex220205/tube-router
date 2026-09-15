@@ -81,7 +81,7 @@ export default function App() {
 
   return (
     <main className="relative h-screen w-screen overflow-hidden font-sans">
-      <TubeMap network={network} />
+      <TubeMap network={network} route={route} />
 
       {/* Everything below floats over the map. pointer-events-none on the
           wrapper and auto on each card, so dragging the map still works in

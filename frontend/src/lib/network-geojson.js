@@ -27,7 +27,7 @@
 // What an unknown line is drawn in. The seed guarantees a colour on every
 // line, so this is for a payload that has outrun the frontend rather than a
 // missing value - visibly wrong beats invisibly absent.
-const UNKNOWN_LINE_COLOUR = '#7f7f7f'
+export const UNKNOWN_LINE_COLOUR = '#7f7f7f'
 
 /**
  * Build the map's two sources from a /network response.
