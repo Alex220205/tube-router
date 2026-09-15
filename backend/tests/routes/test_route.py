@@ -29,6 +29,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Interchange, Line, Segment, Station, StationLine, TransportMode
+from app.services import status_poller
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("TEST_DATABASE_URL"),
@@ -270,3 +271,129 @@ async def test_origin_equal_to_destination_is_an_empty_route_not_an_error(
     assert body["found"] is True
     assert body["total_seconds"] == 0
     assert body["legs"] == []
+
+
+def status_of(*entries: tuple[str, int, str, bool]) -> dict:
+    """A stored status payload, in the shape the poller writes."""
+    return {
+        "as_of": "2026-09-15T12:00:00+00:00",
+        "lines": [
+            {
+                "line_code": code,
+                "severity": severity,
+                "description": description,
+                "reason": f"{code}: {description.lower()}",
+                "running": running,
+            }
+            for code, severity, description, running in entries
+        ],
+    }
+
+
+async def suspend(monkeypatch: pytest.MonkeyPatch, *lines: str) -> None:
+    """Make the last known status report these lines as not running.
+
+    Patches status_poller.current rather than cache.read_json. The cache
+    module is shared - graph_loader reads the network rows through the same
+    function - so patching it globally hands the loader a status payload and
+    it fails with KeyError: 'stations'. Patching the seam the route actually
+    uses leaves the loader alone and still exercises not_running_lines.
+    """
+
+    async def fake() -> dict:
+        return status_of(*((code, 2, "Suspended", False) for code in lines))
+
+    monkeypatch.setattr(status_poller, "current", fake)
+
+
+async def test_a_suspended_line_changes_the_route(
+    api: AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The headline test of Phase 7.
+
+    Fastest is 80 seconds via red then blue. Suspend the blue line and the
+    only remaining way to C is the 300-second green one. Nothing about the
+    request changes - the answer changes because the network did.
+    """
+    await seed_two_line_network(db)
+    before = await plan(api)
+    assert before["total_seconds"] == 80
+
+    await suspend(monkeypatch, "blue")
+    after = await plan(api)
+
+    assert after["found"] is True
+    assert after["total_seconds"] == 300
+    assert [leg["line"] for leg in after["legs"]] == ["green"]
+
+
+async def test_the_answer_says_which_line_it_avoided(
+    api: AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A journey that silently takes a strange path is indistinguishable from a
+    # bug. A user who cannot see why has been given an answer they cannot
+    # check, which is the 9999999 problem wearing better clothes.
+    await seed_two_line_network(db)
+    await suspend(monkeypatch, "blue")
+
+    body = await plan(api)
+
+    assert body["avoided_for_disruption"] == ["blue"]
+    # And it is absent when nothing is wrong, rather than always present.
+    monkeypatch.undo()
+    assert (await plan(api))["avoided_for_disruption"] == []
+
+
+async def test_a_delay_does_not_change_the_route(
+    api: AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The counterweight, and the one that stops the rule quietly widening.
+
+    Severe Delays is the severity it is most tempting to avoid. Doing so would
+    reroute every Piccadilly journey in London over a condition that is often
+    gone within the hour, and the user would never know why their trip got
+    longer.
+    """
+    await seed_two_line_network(db)
+
+    async def delayed() -> dict:
+        return status_of(("blue", 6, "Severe Delays", True))
+
+    monkeypatch.setattr(status_poller, "current", delayed)
+
+    body = await plan(api)
+
+    assert body["total_seconds"] == 80
+    assert body["avoided_for_disruption"] == []
+
+
+async def test_a_suspension_that_cuts_the_destination_off_is_not_a_500(
+    api: AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Suspend both ways to C and there is no journey at all. That is still a
+    # well-formed question with a negative answer, and the avoided list is
+    # what separates "nowhere to go" from "nowhere to go while these are shut".
+    await seed_two_line_network(db)
+    await suspend(monkeypatch, "blue", "green")
+
+    response = await api.post("/route", json={"origin": "A", "destination": "C"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["found"] is False
+    assert body["reason"] == "disconnected"
+    assert body["avoided_for_disruption"] == ["blue", "green"]
+
+
+async def test_an_unknown_status_never_removes_a_line(
+    api: AsyncClient, db: AsyncSession
+) -> None:
+    # conftest points REDIS_URL at a dead port, so this runs with no status at
+    # all - the state for the first minute after every restart. An unknown
+    # status must not refuse a journey that is perfectly possible.
+    await seed_two_line_network(db)
+
+    body = await plan(api)
+
+    assert body["total_seconds"] == 80
+    assert body["avoided_for_disruption"] == []

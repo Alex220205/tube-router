@@ -171,3 +171,26 @@ async def current() -> dict[str, Any]:
     if isinstance(stored, dict) and isinstance(stored.get("lines"), list):
         return stored
     return {"as_of": None, "lines": []}
+
+
+async def not_running_lines() -> frozenset[str]:
+    """Line codes with no trains on them, from the last known status.
+
+    Returns:
+        The lines a route must avoid. Empty when the poller has not run yet,
+        when Redis is unreachable, or on a good day - and all three are the
+        same answer on purpose. An unknown status must not remove lines from
+        the network, because the failure that strands someone is refusing a
+        journey that was perfectly possible.
+    """
+    stored = await current()
+    lines = stored.get("lines")
+    if not isinstance(lines, list):
+        return frozenset()
+    return frozenset(
+        line["line_code"]
+        for line in lines
+        if isinstance(line, dict)
+        and line.get("running") is False
+        and isinstance(line.get("line_code"), str)
+    )
