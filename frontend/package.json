@@ -13,6 +13,7 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "maplibre-gl": "^6.9.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

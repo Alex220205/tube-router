@@ -101,3 +101,19 @@ export function fetchStations(query, signal) {
 export function fetchLines() {
   return getJson('/lines')
 }
+
+/**
+ * The whole tube network: every station, segment and line.
+ *
+ * Sent whole rather than paginated because a map cannot draw a partial
+ * network - pages would be individually useless. A few hundred KB, fetched
+ * once per page load.
+ *
+ * @returns {Promise<{stations: Array, segments: Array, lines: Array}>}
+ *   Segments carry station and line *ids*, not coordinates: Oxford Circus is
+ *   on three lines and in a dozen segments, and nesting it each time would
+ *   repeat it for no gain. src/lib/network-geojson.js does the join.
+ */
+export function fetchNetwork() {
+  return getJson('/network')
+}

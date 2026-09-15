@@ -39,14 +39,22 @@ describe('StationSearch', () => {
     mockStations((url) => {
       seen.push(url)
       return Promise.resolve(
-        ok([{ id: 1, naptan_id: '940GZZLUOXC', name: 'Oxford Circus Underground Station' }]),
+        ok([
+          {
+            id: 1,
+            naptan_id: '940GZZLUOXC',
+            name: 'Oxford Circus Underground Station',
+          },
+        ]),
       )
     })
 
     render(<StationSearch />)
     await userEvent.type(screen.getByLabelText('Find a station'), 'oxf')
 
-    expect(await screen.findByText('Oxford Circus Underground Station')).toBeInTheDocument()
+    expect(
+      await screen.findByText('Oxford Circus Underground Station'),
+    ).toBeInTheDocument()
 
     // Waited for, not asserted immediately. The component fetches once on
     // mount with an empty query, and the mock answers every URL with Oxford

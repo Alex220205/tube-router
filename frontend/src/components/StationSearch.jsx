@@ -48,9 +48,7 @@ export default function StationSearch() {
       {/* An empty result is a real answer, not an error. Saying so beats
           rendering an empty box the user has to interpret. */}
       {!loading && !error && stations.length === 0 && (
-        <p className="mt-2 text-sm text-gray-500">
-          No stations match “{query}”.
-        </p>
+        <p className="mt-2 text-sm text-gray-500">No stations match “{query}”.</p>
       )}
 
       {stations.length > 0 && (
