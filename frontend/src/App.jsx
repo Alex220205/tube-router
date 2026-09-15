@@ -50,6 +50,16 @@ export default function App() {
   const [health, setHealth] = useState(null)
   const [error, setError] = useState(null)
   const [mapError, setMapError] = useState(null)
+
+  // Whether the planner is out of the way. The map is the thing worth looking
+  // at once a route is on it, and on a laptop the panel covers a quarter of
+  // the network including most of west London.
+  //
+  // The map itself is unaffected: its container is the full window either
+  // way, with the cards floating over it, so nothing is resized and MapLibre
+  // is never told anything changed. Hiding a panel that was only ever on top
+  // is the cheapest possible version of this.
+  const [plannerHidden, setPlannerHidden] = useState(false)
   const { network, loading: networkLoading, error: networkError } = useNetwork()
 
   // The question being asked. Held here because both ends of a journey have
@@ -104,58 +114,84 @@ export default function App() {
           {/* The planner. Bordered rather than shadowed: TfL's own material
               is flat and high contrast, and a soft drop shadow over a pale
               map reads as a web dashboard rather than as signage. */}
-          <div className="border-tfl-ink/10 pointer-events-auto flex max-h-[calc(100vh-2rem)] w-full max-w-sm flex-col overflow-hidden border bg-white shadow-xl">
-            <header className="bg-tfl-blue px-4 py-3 text-white">
-              <h1 className="text-lg leading-tight font-bold tracking-tight">
-                Tube Router
-              </h1>
-              <p className="text-xs text-white/70">
-                Plan a journey on the London Underground
-              </p>
-            </header>
+          {plannerHidden ? (
+            // Standing in for the whole panel, so the way back is where the
+            // thing that left used to be. A control that reappears somewhere
+            // else is a control people hunt for.
+            <button
+              type="button"
+              onClick={() => setPlannerHidden(false)}
+              className="bg-tfl-blue hover:bg-tfl-blue-dark pointer-events-auto px-4 py-2.5 text-sm font-bold text-white shadow-xl"
+            >
+              Show planner
+            </button>
+          ) : (
+            <div className="border-tfl-ink/10 pointer-events-auto flex max-h-[calc(100vh-2rem)] w-full max-w-sm flex-col overflow-hidden border bg-white shadow-xl">
+              <header className="bg-tfl-blue flex items-start justify-between gap-3 px-4 py-3 text-white">
+                <div>
+                  <h1 className="text-lg leading-tight font-bold tracking-tight">
+                    Tube Router
+                  </h1>
+                  <p className="text-xs text-white/70">
+                    Plan a journey on the London Underground
+                  </p>
+                </div>
 
-            <div className="overflow-y-auto px-4 pt-1 pb-4">
-              <StationSearch
-                id="origin"
-                label="From"
-                selected={origin}
-                onSelect={setOrigin}
-              />
-              <StationSearch
-                id="destination"
-                label="To"
-                selected={destination}
-                onSelect={setDestination}
-              />
+                {/* Named rather than an icon. A pair of arrows means "full
+                    screen" to some people and "fit to window" to others, and
+                    the two are different things. */}
+                <button
+                  type="button"
+                  onClick={() => setPlannerHidden(true)}
+                  className="shrink-0 border border-white/30 px-2 py-1 text-xs font-medium whitespace-nowrap hover:bg-white/15"
+                >
+                  Hide
+                </button>
+              </header>
 
-              <ObjectiveToggle value={objective} onChange={setObjective} />
+              <div className="overflow-y-auto px-4 pt-1 pb-4">
+                <StationSearch
+                  id="origin"
+                  label="From"
+                  selected={origin}
+                  onSelect={setOrigin}
+                />
+                <StationSearch
+                  id="destination"
+                  label="To"
+                  selected={destination}
+                  onSelect={setDestination}
+                />
 
-              <RoutePanel
-                route={route}
-                loading={routeLoading}
-                error={routeError}
-                objective={objective}
-                lines={network?.lines}
-              />
+                <ObjectiveToggle value={objective} onChange={setObjective} />
 
-              {networkLoading && (
-                <p className="text-tfl-grey mt-3 text-sm">Loading the network…</p>
-              )}
-              {networkError && (
-                <p className="text-tfl-red mt-3 text-sm font-medium">
-                  Could not load the network: {networkError}
-                </p>
-              )}
+                <RoutePanel
+                  route={route}
+                  loading={routeLoading}
+                  error={routeError}
+                  objective={objective}
+                  lines={network?.lines}
+                />
 
-              {/* A map that fails silently is a white rectangle nobody can
-                  diagnose. Whatever MapLibre reports goes here. */}
-              {mapError && (
-                <p className="border-tfl-red bg-tfl-red/5 text-tfl-red mt-3 border-l-4 px-3 py-2 text-sm">
-                  The map could not be drawn: {mapError}
-                </p>
-              )}
+                {networkLoading && (
+                  <p className="text-tfl-grey mt-3 text-sm">Loading the network…</p>
+                )}
+                {networkError && (
+                  <p className="text-tfl-red mt-3 text-sm font-medium">
+                    Could not load the network: {networkError}
+                  </p>
+                )}
+
+                {/* A map that fails silently is a white rectangle nobody can
+                    diagnose. Whatever MapLibre reports goes here. */}
+                {mapError && (
+                  <p className="border-tfl-red bg-tfl-red/5 text-tfl-red mt-3 border-l-4 px-3 py-2 text-sm">
+                    The map could not be drawn: {mapError}
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Top right, and the smallest thing on screen. It proves the stack
               is connected, which is worth being able to see and is not worth

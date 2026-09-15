@@ -27,7 +27,7 @@
 
 import { Map, NavigationControl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toGeoJson } from '../lib/network-geojson'
 import { toRouteGeoJson } from '../lib/route-geojson'
 
@@ -62,6 +62,10 @@ const BLANK_STYLE = {
  */
 export default function TubeMap({ network, route, onError }) {
   const container = useRef(null)
+
+  // Whether the style has finished loading. See the long note on the data
+  // effect below - this replaces asking the map, which was a race.
+  const [ready, setReady] = useState(false)
   const map = useRef(null)
 
   // MapLibre reports almost everything through an 'error' event rather than
@@ -110,6 +114,11 @@ export default function TubeMap({ network, route, onError }) {
 
     map.current.addControl(new NavigationControl({ showCompass: false }))
 
+    // Attached before the event can fire, because the constructor above is
+    // synchronous and `load` is not. This is the only thing that knows the
+    // style is ready, and the effect below waits on it.
+    map.current.on('load', () => setReady(true))
+
     map.current.on('error', (event) => {
       report.current?.(event?.error?.message ?? 'the map failed for an unstated reason')
     })
@@ -117,47 +126,60 @@ export default function TubeMap({ network, route, onError }) {
     return () => {
       map.current?.remove()
       map.current = null
+      // The next map starts with an unloaded style. Leaving this true would
+      // let the data effect run against it and add sources to a style that is
+      // not there yet - which is only reachable through StrictMode's double
+      // mount in development, and would be maddening to diagnose.
+      setReady(false)
     }
   }, [])
 
   // Separate effect: the data arrives after the map is built, and may arrive
   // again. Sources are updated in place rather than re-added, because
   // addSource on an existing id throws.
+  //
+  // It waits on `ready` rather than asking the map whether its style is
+  // loaded. The previous version did the latter, and it is a race:
+  //
+  //     if (map.isStyleLoaded()) draw()
+  //     else map.once('load', draw)
+  //
+  // If `load` has already fired and `isStyleLoaded()` still answers false -
+  // which it does, because it also requires every source to be loaded, and
+  // between the two calls nothing guarantees otherwise - then `once('load')`
+  // subscribes to an event that has been and gone. Nothing draws, nothing
+  // errors, and the map is a blank canvas with the data sitting in memory
+  // beside it.
+  //
+  // A flag set by the one `load` handler cannot miss it: the handler is
+  // attached synchronously when the map is constructed, so the event cannot
+  // have fired first, and a flag - unlike an event - is still true later.
   useEffect(() => {
-    if (!map.current || !network) return
+    const m = map.current
+    if (!ready || !m || !network) return
 
     const { segments, stations } = toGeoJson(network)
     const routeLine = toRouteGeoJson(route, network)
     const hasRoute = routeLine.features.length > 0
 
-    const draw = () => {
-      const m = map.current
-      if (!m) return
-
-      if (m.getSource('segments')) {
-        m.getSource('segments').setData(segments)
-        m.getSource('stations').setData(stations)
-        m.getSource('route').setData(routeLine)
-      } else {
-        addLayers(m, { segments, stations, routeLine })
-      }
-
-      // Dim the rest of the network rather than hiding it. What a route did
-      // NOT take is most of what makes it legible - one line on an empty
-      // canvas could be anywhere.
-      m.setPaintProperty('segments', 'line-opacity', hasRoute ? DIMMED : 1)
-      m.setPaintProperty('stations', 'circle-opacity', hasRoute ? DIMMED : 1)
-
-      // The camera deliberately does not move. Fitting the view to the route
-      // is the obvious touch, and it fights someone who has just panned
-      // somewhere on purpose.
+    if (m.getSource('segments')) {
+      m.getSource('segments').setData(segments)
+      m.getSource('stations').setData(stations)
+      m.getSource('route').setData(routeLine)
+    } else {
+      addLayers(m, { segments, stations, routeLine })
     }
 
-    // Sources cannot be added before the style has loaded, and whether it has
-    // depends on how fast /network answered.
-    if (map.current.isStyleLoaded()) draw()
-    else map.current.once('load', draw)
-  }, [network, route])
+    // Dim the rest of the network rather than hiding it. What a route did NOT
+    // take is most of what makes it legible - one line on an empty canvas
+    // could be anywhere.
+    m.setPaintProperty('segments', 'line-opacity', hasRoute ? DIMMED : 1)
+    m.setPaintProperty('stations', 'circle-opacity', hasRoute ? DIMMED : 1)
+
+    // The camera deliberately does not move. Fitting the view to the route is
+    // the obvious touch, and it fights someone who has just panned somewhere
+    // on purpose.
+  }, [ready, network, route])
 
   return <div ref={container} className="absolute inset-0" />
 }
