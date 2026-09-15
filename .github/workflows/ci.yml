@@ -46,6 +46,19 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+      # Phase 7. Only the pub/sub test needs this, and it skips without
+      # TEST_REDIS_URL below - a test that skips everywhere is worse than no
+      # test, so CI is where it is guaranteed to run.
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@v4
 
@@ -81,6 +94,10 @@ jobs:
           # wrong in CI - a silently skipped constraint test is worse than no
           # test, because the build still goes green.
           TEST_DATABASE_URL: postgresql+asyncpg://tube:tube@localhost:5432/tube_router_test
+          # Set for the same reason, and with the same consequence: the
+          # WebSocket pub/sub test skips without it, so this is what stops it
+          # being a test that has never run anywhere.
+          TEST_REDIS_URL: redis://localhost:6379/0
         run: uv run pytest
 
   frontend:

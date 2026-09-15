@@ -52,6 +52,7 @@ from .routes.network import router as network_route
 from .routes.route import router as route_route
 from .routes.stations import router as stations_route
 from .routes.status import router as status_route
+from .routes.ws import router as ws_route
 from .services import status_poller
 
 settings = get_settings()
@@ -112,6 +113,7 @@ app.include_router(lines_route)
 app.include_router(network_route)
 app.include_router(route_route)
 app.include_router(status_route)
+app.include_router(ws_route)
 
 
 if __name__ == "__main__":
