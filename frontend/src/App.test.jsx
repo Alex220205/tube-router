@@ -78,7 +78,12 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByText('API unreachable')).toBeInTheDocument()
-    expect(screen.getByText(/timed out after 5000ms/)).toBeInTheDocument()
+    // Names the request. Since Phase 8a the page makes two - /health and
+    // /network - and an unreachable API times out both, so a match on
+    // "timed out after 5000ms" alone now finds two elements. Being specific
+    // is the fix; loosening the query to getAllByText would assert that
+    // something somewhere timed out, which is not what this is checking.
+    expect(screen.getByText('GET /health timed out after 5000ms')).toBeInTheDocument()
   })
 
   it('requests health from the configured API base URL, with a timeout', async () => {

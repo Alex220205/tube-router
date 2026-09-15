@@ -1,0 +1,157 @@
+/**
+ * The tube network, drawn on a map.
+ *
+ * WHY THIS EXISTS
+ *     The first thing in this project that looks like a journey planner. It
+ *     draws 272 stations at their real coordinates and 377 links in TfL's
+ *     line colours, and nothing else - selecting a route is Phase 8b.
+ *
+ * NO 2021 EQUIVALENT
+ *     The old project drew nothing at all. docs/AUDIT.md found the table
+ *     meant to hold coordinates had been created with malformed SQL - the
+ *     commas were missing, so SQLite parsed three columns as one - and it
+ *     held zero rows for five years. There was no map because there was
+ *     nothing to put on one.
+ *
+ * WHAT'S NEW
+ *     No basemap. MapLibre usually sits on top of tiles from somewhere; this
+ *     draws on a flat canvas instead, so there is no tile host, no API key,
+ *     no usage policy and nothing external that can be slow or gone. The
+ *     positions are real and the connections are straight lines, which is
+ *     exactly what the data supports: TfL's track geometry was never sourced,
+ *     and drawing curves we do not have would be a prettier lie.
+ */
+
+import { Map, NavigationControl } from 'maplibre-gl'
+import 'maplibre-gl/dist/maplibre-gl.css'
+import { useEffect, useRef } from 'react'
+import { toGeoJson } from '../lib/network-geojson'
+
+// Roughly central London, framed so zone 1 fills the view and the far ends of
+// the Central and Piccadilly lines are a scroll away rather than off-planet.
+const CENTRE = [-0.128, 51.509]
+const ZOOM = 10.4
+
+// A style with no sources of its own. MapLibre requires a style object, and
+// this is the smallest one that is valid: a single background layer.
+const BLANK_STYLE = {
+  version: 8,
+  sources: {},
+  layers: [
+    { id: 'background', type: 'background', paint: { 'background-color': '#f7f7f5' } },
+  ],
+}
+
+/**
+ * @param {{network: object | null}} props The /network payload, or null while
+ *   it is still loading.
+ */
+export default function TubeMap({ network }) {
+  const container = useRef(null)
+  const map = useRef(null)
+
+  // Created once, and never in the same effect that updates the data.
+  // Re-creating a Map leaks its WebGL context, and browsers cap those at
+  // around sixteen before new ones silently fail to render - no error, no
+  // obvious cause, and it only shows up after enough re-renders.
+  useEffect(() => {
+    if (map.current) return
+
+    map.current = new Map({
+      container: container.current,
+      style: BLANK_STYLE,
+      center: CENTRE,
+      zoom: ZOOM,
+      // Nothing here is legible upside down, and a rotated tube map helps
+      // nobody find a station.
+      dragRotate: false,
+      attributionControl: false,
+    })
+    map.current.addControl(new NavigationControl({ showCompass: false }))
+
+    return () => {
+      map.current?.remove()
+      map.current = null
+    }
+  }, [])
+
+  // Separate effect: the data arrives after the map is built, and may arrive
+  // again. Sources are updated in place rather than re-added, because
+  // addSource on an existing id throws.
+  useEffect(() => {
+    if (!map.current || !network) return
+
+    const { segments, stations } = toGeoJson(network)
+
+    const draw = () => {
+      const m = map.current
+      if (!m) return
+
+      if (m.getSource('segments')) {
+        m.getSource('segments').setData(segments)
+        m.getSource('stations').setData(stations)
+        return
+      }
+
+      m.addSource('segments', { type: 'geojson', data: segments })
+      m.addSource('stations', { type: 'geojson', data: stations })
+
+      // One layer for all eleven lines. The colour is read per feature from
+      // the property the transform set, so adding a line to the network is a
+      // data change rather than a twelfth layer here.
+      m.addLayer({
+        id: 'segments',
+        type: 'line',
+        source: 'segments',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': ['get', 'colour'],
+          // Thicker as you zoom in, so the network reads as a diagram from
+          // far out and as individual track up close.
+          'line-width': ['interpolate', ['linear'], ['zoom'], 9, 1.5, 13, 5],
+        },
+      })
+
+      // Stations above the track, or the interchanges disappear under it.
+      m.addLayer({
+        id: 'stations',
+        type: 'circle',
+        source: 'stations',
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 1.6, 13, 4],
+          'circle-color': '#ffffff',
+          'circle-stroke-color': '#111111',
+          'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 9, 0.5, 13, 1.2],
+        },
+      })
+
+      // Only once there is room for them. Every station at zone-1 density is
+      // an unreadable smear, and MapLibre drops overlapping labels rather
+      // than stacking them.
+      m.addLayer({
+        id: 'station-labels',
+        type: 'symbol',
+        source: 'stations',
+        minzoom: 12,
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-size': 11,
+          'text-offset': [0, 1.1],
+          'text-anchor': 'top',
+        },
+        paint: {
+          'text-color': '#111111',
+          'text-halo-color': '#f7f7f5',
+          'text-halo-width': 1.2,
+        },
+      })
+    }
+
+    // Sources cannot be added before the style has loaded, and whether it has
+    // depends on how fast /network answered.
+    if (map.current.isStyleLoaded()) draw()
+    else map.current.once('load', draw)
+  }, [network])
+
+  return <div ref={container} className="absolute inset-0" />
+}
