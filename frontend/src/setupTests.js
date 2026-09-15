@@ -63,4 +63,12 @@ vi.mock('maplibre-gl', () => ({
     }
   },
   NavigationControl: class {},
+
+  // TubeMap calls this at module scope to tell MapLibre where Vite put the
+  // bundled worker. A no-op here: there is no worker in jsdom and nothing to
+  // point at. It has to be listed all the same - an export the module really
+  // has and the mock does not is an immediate failure, which is the same
+  // shape-of-the-module problem that made `npm run build` part of this
+  // phase's verification, arriving from the other direction.
+  setWorkerUrl: () => {},
 }))

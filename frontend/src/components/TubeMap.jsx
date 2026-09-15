@@ -25,7 +25,8 @@
  *     disappearing, and the camera stays where the user left it.
  */
 
-import { Map, NavigationControl } from 'maplibre-gl'
+import { Map, NavigationControl, setWorkerUrl } from 'maplibre-gl'
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useRef, useState } from 'react'
 import { toGeoJson } from '../lib/network-geojson'
@@ -39,6 +40,29 @@ const ZOOM = 10.4
 // Faint enough that the route reads as the subject, strong enough that the
 // rest of the network is still recognisably a map.
 const DIMMED = 0.25
+
+// MapLibre parses every GeoJSON source in a web worker, and finds that worker
+// by building its URL at runtime:
+//
+//     new URL(`./${isDev ? 'maplibre-gl-worker-dev.mjs' : 'maplibre-gl-worker.mjs'}`, base)
+//
+// A template literal, not a string literal. Vite can only emit an asset for
+// `new URL('./literal', import.meta.url)`, which it can see at build time, so
+// the worker is never bundled. In production the URL resolves to
+// /assets/maplibre-gl-worker.mjs, that 404s, no worker starts, **no source
+// ever parses** - and MapLibre reports nothing, because a failed worker fetch
+// is not an error it surfaces. The background layer paints, the layers exist,
+// every source sits permanently at zero features, and the page is an empty
+// grey rectangle.
+//
+// `?worker&url` makes Vite bundle the worker with its dependencies - it pulls
+// in a 500KB shared chunk, so copying the file alone would fail the same way
+// one level down - and hand back the hashed URL of the result. setWorkerUrl is
+// MapLibre's own supported way to say where it went.
+//
+// Called at module scope, because it has to be set before any Map is
+// constructed.
+setWorkerUrl(workerUrl)
 
 // A style with no sources of its own. MapLibre requires a style object, and
 // this is the smallest one that is valid: a single background layer.
@@ -181,7 +205,28 @@ export default function TubeMap({ network, route, onError }) {
     // on purpose.
   }, [ready, network, route])
 
-  return <div ref={container} className="absolute inset-0" />
+  // Two divs, and the nesting is load-bearing.
+  //
+  // MapLibre puts `.maplibregl-map { position: relative }` on whatever element
+  // you hand it, from a stylesheet with no cascade layer. Tailwind v4 emits
+  // its utilities inside `@layer utilities`, and **unlayered CSS beats layered
+  // CSS whatever the source order** - so `.absolute` loses to a rule that
+  // appears 89KB earlier in the same file.
+  //
+  // A single `absolute inset-0` div therefore ends up `position: relative`,
+  // where inset-0 sets offsets instead of size. The box collapses to height 0,
+  // the canvas inside it keeps its default 300px, `overflow: hidden` clips it,
+  // and the result is an empty page with no error anywhere: MapLibre is
+  // drawing perfectly into a container nobody can see.
+  //
+  // So the outer div does the positioning and is not MapLibre's to restyle.
+  // The inner one is the map, and fills its parent - nothing in MapLibre's
+  // CSS sets a height, so `h-full` is uncontested.
+  return (
+    <div className="absolute inset-0">
+      <div ref={container} className="h-full w-full" />
+    </div>
+  )
 }
 
 /**
