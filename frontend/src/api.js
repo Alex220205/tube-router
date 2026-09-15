@@ -15,6 +15,10 @@
  *     The base URL is read from the environment rather than written into the
  *     source. VITE_API_URL is substituted at build time, which is what keeps
  *     "works on my laptop" out of the bundle.
+ *
+ *     Phase 8b adds POST and a WebSocket. The timeout and abort handling was
+ *     GET-only and is now shared by both verbs rather than copied, because
+ *     two copies of a timeout is two places for one of them to be forgotten.
  */
 
 // Vite replaces import.meta.env.VITE_API_URL at build time. The fallback is
@@ -28,20 +32,28 @@ const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 const TIMEOUT_MS = 5000
 
 /**
- * GET a JSON endpoint.
+ * Call a JSON endpoint.
  *
+ * @param {string} method HTTP verb, used in the URL and in error messages -
+ *   "POST /route failed" says more than "request failed".
  * @param {string} path Path beginning with a slash, e.g. "/health".
- * @param {AbortSignal} [signal] Cancels the request if the caller loses
- *   interest - a search superseded by more typing, for example.
+ * @param {object} [options]
+ * @param {object} [options.body] Sent as JSON. Omitted entirely for GET,
+ *   rather than sent as an empty object.
+ * @param {AbortSignal} [options.signal] Cancels the request if the caller
+ *   loses interest - a search superseded by more typing, for example.
  * @returns {Promise<object>} The parsed response body.
  * @throws {Error} If the request times out, fails, or returns a non-2xx status.
  */
-async function getJson(path, signal) {
+async function request(method, path, { body, signal } = {}) {
   let response
   try {
     response = await fetch(`${BASE_URL}${path}`, {
+      method,
+      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
       // Two reasons to give up: the server never answered, or the user has
-      // typed past this request and its answer is already stale. `any`
+      // moved past this request and its answer is already stale. `any`
       // combines them so whichever fires first wins.
       signal: signal
         ? AbortSignal.any([signal, AbortSignal.timeout(TIMEOUT_MS)])
@@ -54,7 +66,7 @@ async function getJson(path, signal) {
     if (cause.name === 'TimeoutError') {
       // { cause } keeps the original DOMException reachable. Replacing an
       // error with a friendlier one should not destroy the evidence.
-      throw new Error(`GET ${path} timed out after ${TIMEOUT_MS}ms`, { cause })
+      throw new Error(`${method} ${path} timed out after ${TIMEOUT_MS}ms`, { cause })
     }
     throw cause
   }
@@ -63,7 +75,7 @@ async function getJson(path, signal) {
     // The status matters to the caller - a 404 and a 503 mean different
     // things - so it goes in the message rather than being flattened into a
     // generic failure.
-    throw new Error(`GET ${path} failed: ${response.status}`)
+    throw new Error(`${method} ${path} failed: ${response.status}`)
   }
 
   return response.json()
@@ -75,7 +87,7 @@ async function getJson(path, signal) {
  * @returns {Promise<{status: string, database: string, version: string}>}
  */
 export function fetchHealth() {
-  return getJson('/health')
+  return request('GET', '/health')
 }
 
 /**
@@ -89,7 +101,7 @@ export function fetchHealth() {
 export function fetchStations(query, signal) {
   const params = new URLSearchParams()
   if (query) params.set('q', query)
-  return getJson(`/stations?${params}`, signal)
+  return request('GET', `/stations?${params}`, { signal })
 }
 
 /**
@@ -99,7 +111,7 @@ export function fetchStations(query, signal) {
  *   colour: string, mode: string}>>}
  */
 export function fetchLines() {
-  return getJson('/lines')
+  return request('GET', '/lines')
 }
 
 /**
@@ -115,5 +127,44 @@ export function fetchLines() {
  *   repeat it for no gain. src/lib/network-geojson.js does the join.
  */
 export function fetchNetwork() {
-  return getJson('/network')
+  return request('GET', '/network')
+}
+
+/**
+ * Plan a journey.
+ *
+ * @param {{origin: string, destination: string, objective: string}} query
+ *   NaPTAN ids, and one of "fastest", "fewest_changes", "step_free".
+ * @param {AbortSignal} [signal] Cancels an answer the user has moved past.
+ * @returns {Promise<object>} A RouteResponse. Note that `found: false` comes
+ *   back as a 200 with a reason, not as an error - "those two stations are
+ *   not connected" is a successful answer to a well-formed question, and the
+ *   backend documents that choice at schemas/route.py.
+ */
+export function planRoute(query, signal) {
+  return request('POST', '/route', { body: query, signal })
+}
+
+/**
+ * Subscribe to live line status.
+ *
+ * The socket sends the current picture on connect, before any change - so
+ * there is no companion call to GET /status here. Fetching as well would be
+ * two requests racing to set the same state, which is harmless until the day
+ * it is not.
+ *
+ * @param {(status: object) => void} onStatus Called with a StatusResponse,
+ *   first on connect and then whenever TfL's answer changes.
+ * @returns {WebSocket} Close it to unsubscribe.
+ */
+export function openStatusSocket(onStatus) {
+  // http -> ws and https -> wss in one substitution, so a deployment behind
+  // TLS does not open an insecure socket that the browser then blocks.
+  const socket = new WebSocket(`${BASE_URL.replace(/^http/, 'ws')}/ws/status`)
+
+  socket.addEventListener('message', (event) => {
+    onStatus(JSON.parse(event.data))
+  })
+
+  return socket
 }

@@ -22,9 +22,12 @@
 
 import { useEffect, useState } from 'react'
 import { fetchHealth } from './api'
+import ObjectiveToggle, { OBJECTIVES } from './components/ObjectiveToggle'
+import RoutePanel from './components/RoutePanel'
 import StationSearch from './components/StationSearch'
 import TubeMap from './components/TubeMap'
 import { useNetwork } from './hooks/useNetwork'
+import { useRoute } from './hooks/useRoute'
 
 // Three distinct outcomes, and the difference between the last two matters:
 // "degraded" means the API answered and told us Postgres is down;
@@ -40,10 +43,18 @@ export default function App() {
   const [error, setError] = useState(null)
   const { network, loading: networkLoading, error: networkError } = useNetwork()
 
-  // The two ends of the journey. Null until chosen, which is what the panel
-  // below reads to decide whether there is anything to say yet.
+  // The question being asked. Held here because both ends of a journey have
+  // to be known in one place to ask for a route, and neither search box has
+  // any business knowing about the other.
   const [origin, setOrigin] = useState(null)
   const [destination, setDestination] = useState(null)
+  const [objective, setObjective] = useState(OBJECTIVES[0].value)
+
+  const { route, loading: routeLoading, error: routeError } = useRoute(
+    origin,
+    destination,
+    objective,
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -95,12 +106,15 @@ export default function App() {
             onSelect={setDestination}
           />
 
-          {origin && destination && (
-            <p className="mt-4 border-t border-gray-100 pt-3 text-sm">
-              {origin.name} <span className="text-gray-400">to</span>{' '}
-              {destination.name}
-            </p>
-          )}
+          <ObjectiveToggle value={objective} onChange={setObjective} />
+
+          <RoutePanel
+            route={route}
+            loading={routeLoading}
+            error={routeError}
+            objective={objective}
+            lines={network?.lines}
+          />
 
           {networkLoading && (
             <p className="mt-3 text-sm text-gray-500">Loading the network…</p>
