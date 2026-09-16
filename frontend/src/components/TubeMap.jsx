@@ -183,15 +183,16 @@ export default function TubeMap({ network, route, onError }) {
     if (!ready || !m || !network) return
 
     const { segments, stations } = toGeoJson(network)
-    const routeLine = toRouteGeoJson(route, network)
-    const hasRoute = routeLine.features.length > 0
+    const drawn = toRouteGeoJson(route, network)
+    const hasRoute = drawn.line.features.length > 0
 
     if (m.getSource('segments')) {
       m.getSource('segments').setData(segments)
       m.getSource('stations').setData(stations)
-      m.getSource('route').setData(routeLine)
+      m.getSource('route').setData(drawn.line)
+      m.getSource('route-stations').setData(drawn.stations)
     } else {
-      addLayers(m, { segments, stations, routeLine })
+      addLayers(m, { segments, stations, drawn })
     }
 
     // Dim the rest of the network rather than hiding it. What a route did NOT
@@ -199,6 +200,16 @@ export default function TubeMap({ network, route, onError }) {
     // could be anywhere.
     m.setPaintProperty('segments', 'line-opacity', hasRoute ? DIMMED : 1)
     m.setPaintProperty('stations', 'circle-opacity', hasRoute ? DIMMED : 1)
+    m.setPaintProperty('stations', 'circle-stroke-opacity', hasRoute ? DIMMED : 1)
+
+    // The network's own labels go away while a route is up, so the only names
+    // on screen are the ones on the journey. Two sets of labels fighting for
+    // the same space is how a route ends up with its interchange unlabelled.
+    m.setLayoutProperty(
+      'station-labels',
+      'visibility',
+      hasRoute ? 'none' : 'visible',
+    )
 
     // The camera deliberately does not move. Fitting the view to the route is
     // the obvious touch, and it fights someone who has just panned somewhere
@@ -239,12 +250,13 @@ export default function TubeMap({ network, route, onError }) {
  * interchange it passes through.
  *
  * @param {object} m The map.
- * @param {{segments: object, stations: object, routeLine: object}} data
+ * @param {{segments: object, stations: object, drawn: object}} data
  */
-function addLayers(m, { segments, stations, routeLine }) {
+function addLayers(m, { segments, stations, drawn }) {
   m.addSource('segments', { type: 'geojson', data: segments })
-  m.addSource('route', { type: 'geojson', data: routeLine })
+  m.addSource('route', { type: 'geojson', data: drawn.line })
   m.addSource('stations', { type: 'geojson', data: stations })
+  m.addSource('route-stations', { type: 'geojson', data: drawn.stations })
 
   // One layer for all eleven lines. The colour is read per feature from the
   // property the transform set, so adding a line to the network is a data
@@ -285,6 +297,56 @@ function addLayers(m, { segments, stations, routeLine }) {
       'circle-color': '#ffffff',
       'circle-stroke-color': '#111111',
       'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 9, 0.5, 13, 1.2],
+    },
+  })
+
+  // The stations on the journey, above everything and at full strength while
+  // the other 250-odd are dimmed to a quarter. Bigger and black-ringed,
+  // because at the zoom where a whole route fits, a 2px white dot on a
+  // coloured line is not something anyone can pick out.
+  //
+  // Two sizes. The ends of the journey and every change are decision points -
+  // places a traveller has to do something - and the stations between them are
+  // not, so the ones that matter are drawn nearly twice the size.
+  m.addLayer({
+    id: 'route-stations',
+    type: 'circle',
+    source: 'route-stations',
+    paint: {
+      'circle-radius': [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        9,
+        ['case', ['get', 'major'], 4.5, 2.5],
+        13,
+        ['case', ['get', 'major'], 8, 5],
+      ],
+      'circle-color': '#ffffff',
+      'circle-stroke-color': '#1c1c1b',
+      'circle-stroke-width': ['case', ['get', 'major'], 2.5, 1.5],
+    },
+  })
+
+  // Named whenever a route is showing, whatever the zoom. The rule below -
+  // labels only past zoom 12 - exists because 272 of them at once is a smear;
+  // a dozen on one journey is the thing you actually wanted to read.
+  m.addLayer({
+    id: 'route-station-labels',
+    type: 'symbol',
+    source: 'route-stations',
+    filter: ['get', 'major'],
+    layout: {
+      'text-field': ['get', 'name'],
+      'text-size': 12,
+      'text-offset': [0, 1.2],
+      'text-anchor': 'top',
+      'text-allow-overlap': false,
+    },
+    paint: {
+      'text-color': '#1c1c1b',
+      'text-halo-color': '#f7f7f5',
+      'text-halo-width': 2,
     },
   })
 

@@ -60,9 +60,9 @@ describe('toRouteGeoJson', () => {
     // The legs carry no coordinates at all - only ids and names. A join that
     // looks up the wrong key finds nothing and draws nothing; one that reads
     // the wrong fields draws a route in the Indian Ocean. Neither raises.
-    const { features } = toRouteGeoJson(route, network)
+    const { line } = toRouteGeoJson(route, network)
 
-    expect(features[0].geometry.coordinates).toEqual([
+    expect(line.features[0].geometry.coordinates).toEqual([
       [-0.141903, 51.515224],
       [-0.142787, 51.506947],
     ])
@@ -72,10 +72,10 @@ describe('toRouteGeoJson', () => {
     // Merging the legs into one LineString is the tempting simplification.
     // It draws the whole journey in a single colour, which hides the change -
     // wrong in the one place a traveller most needs to see it.
-    const { features } = toRouteGeoJson(route, network)
+    const { line } = toRouteGeoJson(route, network)
 
-    expect(features).toHaveLength(2)
-    expect(features.map((feature) => feature.properties.colour)).toEqual([
+    expect(line.features).toHaveLength(2)
+    expect(line.features.map((feature) => feature.properties.colour)).toEqual([
       '#0098D4',
       '#A0A5A9',
     ])

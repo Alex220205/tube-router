@@ -24,6 +24,8 @@
  *     Indian Ocean.
  */
 
+import { shortName } from './station-name'
+
 // What an unknown line is drawn in. The seed guarantees a colour on every
 // line, so this is for a payload that has outrun the frontend rather than a
 // missing value - visibly wrong beats invisibly absent.
@@ -96,7 +98,7 @@ export function toGeoJson(network) {
       type: 'FeatureCollection',
       features: stations.map((station) => ({
         type: 'Feature',
-        properties: { name: station.name, naptanId: station.naptan_id },
+        properties: { name: shortName(station.name), naptanId: station.naptan_id },
         geometry: { type: 'Point', coordinates: [station.lon, station.lat] },
       })),
     },

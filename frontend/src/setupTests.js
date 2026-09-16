@@ -58,6 +58,7 @@ vi.mock('maplibre-gl', () => ({
     addSource() {}
     addLayer() {}
     setPaintProperty() {}
+    setLayoutProperty() {}
     isStyleLoaded() {
       return false
     }

@@ -25,21 +25,27 @@
  */
 
 import { UNKNOWN_LINE_COLOUR } from './network-geojson'
+import { shortName } from './station-name'
 
-const EMPTY = { type: 'FeatureCollection', features: [] }
+const empty = () => ({ type: 'FeatureCollection', features: [] })
 
 /**
- * Build the route source from a /route response and the network.
+ * Build the route sources from a /route response and the network.
  *
  * @param {object | null} route A RouteResponse. A route that was not found is
  *   handled here rather than by the caller, so a no-route answer clears the
  *   map by the same path that draws one.
  * @param {object | null} network The /network payload the map is drawing.
- * @returns {object} A FeatureCollection of LineStrings, one per leg, each
- *   carrying the colour of the line it runs on.
+ * @returns {{line: object, stations: object}} LineStrings, one per leg, each
+ *   carrying the colour of the line it runs on; and Points for every station
+ *   the journey passes through, so the map can pick them out of the 272 it is
+ *   already drawing. Interchanges are marked, since those are the stations a
+ *   traveller has to do something at.
  */
 export function toRouteGeoJson(route, network) {
-  if (!route?.found || !route.legs?.length) return EMPTY
+  if (!route?.found || !route.legs?.length) {
+    return { line: empty(), stations: empty() }
+  }
 
   // Keyed by NaPTAN id, because that is what the legs speak. The map's own
   // station source carries the same id, so this is a lookup rather than a
@@ -50,6 +56,11 @@ export function toRouteGeoJson(route, network) {
   const lineByCode = new Map((network?.lines ?? []).map((line) => [line.code, line]))
 
   const features = []
+
+  // Keyed by NaPTAN id so a station appearing on two legs - which is exactly
+  // what an interchange is - becomes one point rather than two stacked on top
+  // of each other.
+  const stops = new Map()
 
   for (const leg of route.legs) {
     const coordinates = []
@@ -68,6 +79,24 @@ export function toRouteGeoJson(route, network) {
       // [lon, lat]. Reverse of speech, same as network-geojson.js - and the
       // failure is identical: a route rendered perfectly, in the Indian Ocean.
       coordinates.push([station.lon, station.lat])
+
+      // Where the traveller has to do something: the two ends of the journey,
+      // and anywhere a leg begins or ends in the middle of it, which is a
+      // change. Everything else is a station the train goes through.
+      const isEnd = stop === leg.stations[0] || stop === leg.stations.at(-1)
+
+      stops.set(stop.id, {
+        type: 'Feature',
+        properties: {
+          name: shortName(stop.name),
+          // Drawn larger and labelled. An interchange or an end of the journey
+          // is a decision point; the twenty stations between them are not.
+          // Sticky across legs - a change is the end of one leg and the start
+          // of the next, and it must stay major when the second one sets it.
+          major: stops.get(stop.id)?.properties.major || isEnd,
+        },
+        geometry: { type: 'Point', coordinates: [station.lon, station.lat] },
+      })
     }
 
     // A LineString needs two points. One is not a line and MapLibre will not
@@ -87,5 +116,8 @@ export function toRouteGeoJson(route, network) {
     })
   }
 
-  return { type: 'FeatureCollection', features }
+  return {
+    line: { type: 'FeatureCollection', features },
+    stations: { type: 'FeatureCollection', features: [...stops.values()] },
+  }
 }
