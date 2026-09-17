@@ -32,6 +32,17 @@ import { shortName } from './station-name'
 export const UNKNOWN_LINE_COLOUR = '#7f7f7f'
 
 /**
+ * One physical stretch of track, whichever way round it is described.
+ *
+ * @param {number} a Station id.
+ * @param {number} b The other station id.
+ * @returns {string} The same key for a-b and b-a.
+ */
+function linkKey(a, b) {
+  return a < b ? `${a}:${b}` : `${b}:${a}`
+}
+
+/**
  * Build the map's two sources from a /network response.
  *
  * @param {{stations: Array, segments: Array, lines: Array}} network
@@ -45,6 +56,29 @@ export function toGeoJson(network) {
 
   const stationById = new Map(stations.map((station) => [station.id, station]))
   const lineById = new Map(lines.map((line) => [line.id, line]))
+
+  // Which lines run over each physical link. **57 of 314 links carry more
+  // than one** - 18% of the network - and until this existed they were drawn
+  // as identical LineStrings stacked on each other, so only whichever painted
+  // last was visible.
+  //
+  // The Piccadilly and the Metropolitan share the track from Rayners Lane to
+  // Uxbridge; the Circle, Hammersmith & City and Metropolitan share six links
+  // through Baker Street and Farringdon. On the real map those run side by
+  // side. Here one of them simply vanished, and nothing was wrong with the
+  // data - both segments were in the payload, both became features, and one
+  // was painted exactly over the other.
+  const linesOnLink = new Map()
+
+  for (const segment of segments) {
+    const from = stationById.get(segment.origin_station_id)
+    const to = stationById.get(segment.destination_station_id)
+    if (!from || !to) continue
+
+    const link = linkKey(from.id, to.id)
+    if (!linesOnLink.has(link)) linesOnLink.set(link, new Set())
+    linesOnLink.get(link).add(segment.line_id)
+  }
 
   // Segments are directional, and nearly every link appears once each way:
   // 754 rows for 379 links. Drawn as-is that is 375 of them stroked twice,
@@ -72,21 +106,41 @@ export function toGeoJson(network) {
     // too: Shepherd's Bush Market to Wood Lane is genuinely two links, on the
     // Circle and on the Hammersmith & City, and they are different lines on
     // the map.
-    const key = [segment.line_id, ...[from.id, to.id].sort((a, b) => a - b)].join(':')
+    const link = linkKey(from.id, to.id)
+    const key = `${segment.line_id}:${link}`
     if (drawn.has(key)) continue
     drawn.add(key)
+
+    // Where this line sits in the bundle running over this link, as a
+    // multiple of one line-width either side of the centre: a lone line gets
+    // 0, a pair gets -0.5 and +0.5, a trio -1, 0 and +1.
+    //
+    // Sorted by line id so the order is stable. Without that the same link
+    // could fan out differently between two renders of identical data, which
+    // would look like the map twitching for no reason.
+    const bundle = [...linesOnLink.get(link)].sort((a, b) => a - b)
+    const offset = bundle.indexOf(segment.line_id) - (bundle.length - 1) / 2
+
+    // Drawn in a canonical direction - low station id to high - rather than
+    // whichever way round this segment happens to be. line-offset is applied
+    // relative to the direction of travel, so two lines on one link described
+    // in opposite directions would be pushed the same way and stay on top of
+    // each other. That would have fixed some of the network and silently left
+    // the rest broken.
+    const [start, end] = from.id < to.id ? [from, to] : [to, from]
 
     features.push({
       type: 'Feature',
       properties: {
         colour: lineById.get(segment.line_id)?.colour ?? UNKNOWN_LINE_COLOUR,
+        offset,
       },
       geometry: {
         type: 'LineString',
         // [lon, lat]. See the header - the order is the reverse of speech.
         coordinates: [
-          [from.lon, from.lat],
-          [to.lon, to.lat],
+          [start.lon, start.lat],
+          [end.lon, end.lat],
         ],
       },
     })

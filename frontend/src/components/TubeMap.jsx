@@ -41,6 +41,22 @@ const ZOOM = 10.4
 // rest of the network is still recognisably a map.
 const DIMMED = 0.25
 
+// Thicker as you zoom in, so the network reads as a diagram from far out and
+// as individual track up close. The two ends are named separately because
+// line-offset has to shift by exactly one of these per line, and a zoom
+// expression cannot be nested inside the multiply that does it.
+const LINE_WIDTH_MIN = 1.5
+const LINE_WIDTH_MAX = 5
+const LINE_WIDTH = [
+  'interpolate',
+  ['linear'],
+  ['zoom'],
+  9,
+  LINE_WIDTH_MIN,
+  13,
+  LINE_WIDTH_MAX,
+]
+
 // MapLibre parses every GeoJSON source in a web worker, and finds that worker
 // by building its URL at runtime:
 //
@@ -270,7 +286,26 @@ function addLayers(m, { segments, stations, drawn }) {
       'line-color': ['get', 'colour'],
       // Thicker as you zoom in, so the network reads as a diagram from far
       // out and as individual track up close.
-      'line-width': ['interpolate', ['linear'], ['zoom'], 9, 1.5, 13, 5],
+      'line-width': LINE_WIDTH,
+      // Lines sharing a stretch of track are fanned out either side of it
+      // rather than stacked. The shift is exactly one line width, so they sit
+      // touching rather than overlapping or leaving a gap, at every zoom. The
+      // transform decides who goes where; see network-geojson.js.
+      //
+      // The zoom interpolation has to be the OUTERMOST expression, with the
+      // multiply inside each stop. Wrapping it the other way round -
+      // ['*', ['get','offset'], LINE_WIDTH] - is rejected at addLayer time
+      // with "Cannot style non-existing layer", because a zoom expression is
+      // only allowed at the top level of a property value.
+      'line-offset': [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        9,
+        ['*', ['get', 'offset'], LINE_WIDTH_MIN],
+        13,
+        ['*', ['get', 'offset'], LINE_WIDTH_MAX],
+      ],
     },
   })
 

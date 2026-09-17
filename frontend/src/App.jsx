@@ -26,8 +26,7 @@
  *     changing colour is a reseed rather than a frontend change.
  */
 
-import { useEffect, useState } from 'react'
-import { fetchHealth } from './api'
+import { useState } from 'react'
 import LineStatus from './components/LineStatus'
 import ObjectiveToggle, { OBJECTIVES } from './components/ObjectiveToggle'
 import RoutePanel from './components/RoutePanel'
@@ -37,18 +36,7 @@ import { useLiveStatus } from './hooks/useLiveStatus'
 import { useNetwork } from './hooks/useNetwork'
 import { useRoute } from './hooks/useRoute'
 
-// Three distinct outcomes, and the difference between the last two matters:
-// "degraded" means the API answered and told us Postgres is down;
-// "unreachable" means the API itself did not answer. They look similar on
-// screen and have completely different causes.
-const LOADING = 'loading'
-const REACHED = 'reached'
-const UNREACHABLE = 'unreachable'
-
 export default function App() {
-  const [state, setState] = useState(LOADING)
-  const [health, setHealth] = useState(null)
-  const [error, setError] = useState(null)
   const [mapError, setMapError] = useState(null)
 
   // Whether the planner is out of the way. The map is the thing worth looking
@@ -79,28 +67,6 @@ export default function App() {
   // there is nothing to fetch alongside it - see hooks/useLiveStatus.js.
   const status = useLiveStatus()
 
-  useEffect(() => {
-    let cancelled = false
-
-    fetchHealth()
-      .then((payload) => {
-        // The component can unmount before the request settles - in
-        // development, React's StrictMode guarantees it by mounting twice.
-        // Setting state afterwards is a warning and a leak.
-        if (cancelled) return
-        setHealth(payload)
-        setState(REACHED)
-      })
-      .catch((err) => {
-        if (cancelled) return
-        setError(err.message)
-        setState(UNREACHABLE)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   return (
     <main className="bg-tfl-paper text-tfl-ink relative h-screen w-screen overflow-hidden font-sans">
@@ -193,52 +159,6 @@ export default function App() {
             </div>
           )}
 
-          {/* Top right, and the smallest thing on screen. It proves the stack
-              is connected, which is worth being able to see and is not worth
-              any more room than this. */}
-          <div className="border-tfl-ink/10 pointer-events-auto border bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
-            <h2 className="text-tfl-grey mb-1 font-bold tracking-wider uppercase">
-              API status
-            </h2>
-
-            {state === LOADING && <p>Checking…</p>}
-
-            {state === UNREACHABLE && (
-              <div>
-                <p className="text-tfl-red font-bold">API unreachable</p>
-                <p className="text-tfl-grey mt-0.5">{error}</p>
-              </div>
-            )}
-
-            {state === REACHED && (
-              <dl className="grid grid-cols-[auto_auto] gap-x-3 gap-y-0.5">
-                <dt className="text-tfl-grey">Status</dt>
-                <dd
-                  className={
-                    health.status === 'ok'
-                      ? 'text-tfl-green font-medium'
-                      : 'text-tfl-red font-medium'
-                  }
-                >
-                  {health.status}
-                </dd>
-
-                <dt className="text-tfl-grey">Database</dt>
-                <dd
-                  className={
-                    health.database === 'ok'
-                      ? 'text-tfl-green font-medium'
-                      : 'text-tfl-red font-medium'
-                  }
-                >
-                  {health.database}
-                </dd>
-
-                <dt className="text-tfl-grey">Version</dt>
-                <dd>{health.version}</dd>
-              </dl>
-            )}
-          </div>
         </div>
 
         {/* Bottom right. About the railway rather than about this service,
