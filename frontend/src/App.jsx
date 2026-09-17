@@ -74,9 +74,16 @@ export default function App() {
 
       {/* Everything below floats over the map. pointer-events-none on the
           wrapper and auto on each card, so dragging the map still works in
-          the gaps between them. */}
-      <div className="pointer-events-none absolute inset-0 flex flex-col p-4">
-        <div className="flex items-start justify-between gap-4">
+          the gaps between them.
+ 
+          Each card is positioned in its own corner rather than laid out in a
+          shared column. They used to be flex children of one flex-col, which
+          meant the planner's max-height claimed the whole column and left the
+          status panel whatever was over - so on a short screen the expanded
+          line list was cut off, and hiding the planner "fixed" it. Two cards
+          in two corners cannot compete for the same height. */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute top-4 left-4">
           {/* The planner. Bordered rather than shadowed: TfL's own material
               is flat and high contrast, and a soft drop shadow over a pale
               map reads as a web dashboard rather than as signage. */}
@@ -92,7 +99,7 @@ export default function App() {
               Show planner
             </button>
           ) : (
-            <div className="border-tfl-ink/10 pointer-events-auto flex max-h-[calc(100vh-2rem)] w-full max-w-sm flex-col overflow-hidden border bg-white shadow-xl">
+            <div className="border-tfl-ink/10 pointer-events-auto flex max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-sm flex-col overflow-hidden border bg-white shadow-xl">
               <header className="bg-tfl-blue flex items-start justify-between gap-3 px-4 py-3 text-white">
                 <div>
                   <h1 className="text-lg leading-tight font-bold tracking-tight">
@@ -163,8 +170,8 @@ export default function App() {
 
         {/* Bottom right. About the railway rather than about this service,
             which is why it does not share a corner with the one above. */}
-        <div className="mt-auto flex justify-end">
-          <div className="border-tfl-ink/10 pointer-events-auto max-h-[60vh] max-w-xs overflow-y-auto border bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
+        <div className="absolute right-4 bottom-4">
+          <div className="border-tfl-ink/10 pointer-events-auto max-h-[calc(100vh-2rem)] max-w-xs overflow-y-auto border bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
             <LineStatus status={status} lines={network?.lines} />
           </div>
         </div>
