@@ -41,6 +41,20 @@ const ZOOM = 10.4
 // rest of the network is still recognisably a map.
 const DIMMED = 0.25
 
+// The map's own colours, as opposed to the lines'.
+//
+// These have to be hex literals: MapLibre paints into a WebGL canvas and
+// cannot read the CSS custom properties in index.css, so `var(--color-tfl-
+// ink)` would simply not resolve. They are named here, with the token they
+// mirror, so changing the palette is two edits in two files rather than a
+// hunt through eleven paint blocks.
+//
+// Line colours are deliberately NOT here. Those come from the database with
+// the network, so recolouring a line is a reseed - see docs/CUSTOMISING.md.
+const PAPER = '#f7f7f5' // --color-tfl-paper, the canvas and label halos
+const INK = '#1c1c1b' // --color-tfl-ink, station rings and label text
+const STATION_FILL = '#ffffff'
+
 // Thicker as you zoom in, so the network reads as a diagram from far out and
 // as individual track up close. The two ends are named separately because
 // line-offset has to shift by exactly one of these per line, and a zoom
@@ -93,7 +107,7 @@ const BLANK_STYLE = {
   version: 8,
   sources: {},
   layers: [
-    { id: 'background', type: 'background', paint: { 'background-color': '#f7f7f5' } },
+    { id: 'background', type: 'background', paint: { 'background-color': PAPER } },
   ],
 }
 
@@ -336,8 +350,8 @@ function addLayers(m, { segments, stations, drawn }) {
     source: 'stations',
     paint: {
       'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 1.6, 13, 4],
-      'circle-color': '#ffffff',
-      'circle-stroke-color': '#111111',
+      'circle-color': STATION_FILL,
+      'circle-stroke-color': INK,
       'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 9, 0.5, 13, 1.2],
     },
   })
@@ -364,8 +378,8 @@ function addLayers(m, { segments, stations, drawn }) {
         13,
         ['case', ['get', 'major'], 8, 5],
       ],
-      'circle-color': '#ffffff',
-      'circle-stroke-color': '#1c1c1b',
+      'circle-color': STATION_FILL,
+      'circle-stroke-color': INK,
       'circle-stroke-width': ['case', ['get', 'major'], 2.5, 1.5],
     },
   })
@@ -386,8 +400,8 @@ function addLayers(m, { segments, stations, drawn }) {
       'text-allow-overlap': false,
     },
     paint: {
-      'text-color': '#1c1c1b',
-      'text-halo-color': '#f7f7f5',
+      'text-color': INK,
+      'text-halo-color': PAPER,
       'text-halo-width': 2,
     },
   })
@@ -407,8 +421,8 @@ function addLayers(m, { segments, stations, drawn }) {
       'text-anchor': 'top',
     },
     paint: {
-      'text-color': '#111111',
-      'text-halo-color': '#f7f7f5',
+      'text-color': INK,
+      'text-halo-color': PAPER,
       'text-halo-width': 1.2,
     },
   })
