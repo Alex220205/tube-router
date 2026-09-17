@@ -44,17 +44,29 @@ const network = {
   ],
 }
 
-// Two lines over one stretch of track, described in OPPOSITE directions -
-// which is what the seed actually produces, and the case that makes the
-// canonical-direction rule matter.
-const sharedTrack = {
-  ...network,
+// Two lines sharing a corridor of two consecutive links.
+//
+// The station ids deliberately disagree with the geography: id 1 is the
+// WESTMOST and id 2 the EASTMOST, with id 3 in the middle. That is not
+// contrived - ids come from the order the seed inserted rows, and on the real
+// Uxbridge branch the id order reverses the direction four times in six
+// links.
+const corridor = {
+  stations: [
+    { id: 1, naptan_id: 'A', name: 'West', lat: 51.55, lon: -0.45 },
+    { id: 2, naptan_id: 'C', name: 'East', lat: 51.55, lon: -0.25 },
+    { id: 3, naptan_id: 'B', name: 'Middle', lat: 51.55, lon: -0.35 },
+  ],
   segments: [
-    { line_id: 10, origin_station_id: 1, destination_station_id: 2, seconds: 120 },
-    { line_id: 11, origin_station_id: 2, destination_station_id: 1, seconds: 140 },
+    // West to Middle, and Middle to East, each carrying both lines and each
+    // stored in whatever direction - exactly as the seed emits them.
+    { line_id: 10, origin_station_id: 1, destination_station_id: 3, seconds: 120 },
+    { line_id: 11, origin_station_id: 3, destination_station_id: 1, seconds: 140 },
+    { line_id: 10, origin_station_id: 2, destination_station_id: 3, seconds: 120 },
+    { line_id: 11, origin_station_id: 3, destination_station_id: 2, seconds: 140 },
   ],
   lines: [
-    ...network.lines,
+    { id: 10, code: 'victoria', name: 'Victoria', colour: '#0098D4', mode: 'tube' },
     { id: 11, code: 'piccadilly', name: 'Piccadilly', colour: '#003688', mode: 'tube' },
   ],
 }
@@ -68,9 +80,14 @@ describe('toGeoJson', () => {
     // Indian Ocean, drawn without complaint. docs/TESTS.md records the
     // database side of this project being caught by the same inversion twice.
     expect(stations.features[0].geometry.coordinates).toEqual([-0.141903, 51.515224])
+
+    // Green Park first, because links are drawn west to east and it is the
+    // westmost of the two by 0.0009 degrees - see westFirst. Still asserting
+    // the exact pair rather than loosening the check: the failure this guards
+    // is a lat/lon swap, and that is invisible to anything vaguer.
     expect(segments.features[0].geometry.coordinates).toEqual([
-      [-0.141903, 51.515224],
       [-0.142787, 51.506947],
+      [-0.141903, 51.515224],
     ])
   })
 
@@ -82,27 +99,42 @@ describe('toGeoJson', () => {
     expect(segments.features).toHaveLength(1)
   })
 
-  it('fans out two lines sharing one stretch of track, the same way round', () => {
+  it('fans out lines sharing track, on the same side for the whole corridor', () => {
     // 57 of the network's 314 links carry more than one line. Drawn without an
     // offset they are identical LineStrings stacked on each other and only the
-    // last one painted is visible - which is how the Metropolitan disappeared
-    // between Rayners Lane and Uxbridge, and the Circle and Hammersmith & City
-    // vanished under the Metropolitan through Farringdon.
-    const { segments } = toGeoJson(sharedTrack)
+    // last painted is visible - which is how the Metropolitan disappeared
+    // between Rayners Lane and Uxbridge.
+    const { segments } = toGeoJson(corridor)
 
-    expect(segments.features).toHaveLength(2)
+    expect(segments.features).toHaveLength(4)
 
-    // Opposite signs, so they are pushed to opposite sides of the track.
-    const offsets = segments.features.map((f) => f.properties.offset)
-    expect(offsets).toEqual([-0.5, 0.5])
+    // Every link drawn west to east. line-offset shifts a line relative to its
+    // direction of travel, so a link drawn backwards puts its lines on the
+    // wrong side - and the pair visibly swap places partway along the branch.
+    //
+    // Ordering by station id looks like it fixes this and does not: here id 1
+    // is westmost and id 2 eastmost, so id order would draw the second link
+    // east to west.
+    for (const feature of segments.features) {
+      const [start, end] = feature.geometry.coordinates
+      expect(start[0]).toBeLessThan(end[0])
+    }
 
-    // And both drawn the same way round. line-offset is applied relative to
-    // the direction of travel, so two lines described in opposite directions
-    // would be pushed to the SAME side and stay on top of each other - the
-    // bug surviving the fix, on exactly the links the seed happens to emit
-    // backwards.
-    const [first, second] = segments.features.map((f) => f.geometry.coordinates)
-    expect(first).toEqual(second)
+    // And within each link the two lines are pushed to opposite sides, the
+    // same line to the same side both times.
+    const offsetsFor = (lon) =>
+      segments.features
+        .filter((f) => f.geometry.coordinates[0][0] === lon)
+        .map((f) => [f.properties.colour, f.properties.offset])
+
+    expect(offsetsFor(-0.45)).toEqual([
+      ['#0098D4', -0.5],
+      ['#003688', 0.5],
+    ])
+    expect(offsetsFor(-0.35)).toEqual([
+      ['#0098D4', -0.5],
+      ['#003688', 0.5],
+    ])
   })
 
   it('skips a segment naming a station the payload does not contain', () => {

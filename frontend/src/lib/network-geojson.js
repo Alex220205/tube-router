@@ -43,6 +43,33 @@ function linkKey(a, b) {
 }
 
 /**
+ * The two ends of a link, always west to east.
+ *
+ * WHY GEOGRAPHY AND NOT ID
+ *     `line-offset` shifts a line relative to its direction of travel, so
+ *     which side a line sits on depends on which way round it is drawn. Every
+ *     link in a corridor therefore has to be drawn the same way, or lines
+ *     swap sides at some stations and not others.
+ *
+ *     Ordering by station id looks like it does that, and does not: ids come
+ *     from the order the seed inserted rows, which has nothing to do with
+ *     where the stations are. Along Uxbridge to Rayners Lane it reverses the
+ *     direction **four times in six links**, and the Metropolitan and
+ *     Piccadilly visibly trade places down the branch.
+ *
+ *     Longitude is stable along a corridor in a way an id never is. Latitude
+ *     breaks the tie for track running exactly north-south.
+ *
+ * @param {object} a A station with lon and lat.
+ * @param {object} b The other station.
+ * @returns {Array<object>} The pair, westmost first.
+ */
+function westFirst(a, b) {
+  if (a.lon !== b.lon) return a.lon < b.lon ? [a, b] : [b, a]
+  return a.lat < b.lat ? [a, b] : [b, a]
+}
+
+/**
  * Build the map's two sources from a /network response.
  *
  * @param {{stations: Array, segments: Array, lines: Array}} network
@@ -121,13 +148,11 @@ export function toGeoJson(network) {
     const bundle = [...linesOnLink.get(link)].sort((a, b) => a - b)
     const offset = bundle.indexOf(segment.line_id) - (bundle.length - 1) / 2
 
-    // Drawn in a canonical direction - low station id to high - rather than
-    // whichever way round this segment happens to be. line-offset is applied
-    // relative to the direction of travel, so two lines on one link described
-    // in opposite directions would be pushed the same way and stay on top of
-    // each other. That would have fixed some of the network and silently left
-    // the rest broken.
-    const [start, end] = from.id < to.id ? [from, to] : [to, from]
+    // Always west to east, whichever way round this segment happens to be
+    // stored. See westFirst: the direction decides which side of the track
+    // each line lands on, so it has to be consistent along a whole corridor
+    // and not just within one link.
+    const [start, end] = westFirst(from, to)
 
     features.push({
       type: 'Feature',

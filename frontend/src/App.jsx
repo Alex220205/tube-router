@@ -164,10 +164,7 @@ export default function App() {
         {/* Bottom right. About the railway rather than about this service,
             which is why it does not share a corner with the one above. */}
         <div className="mt-auto flex justify-end">
-          <div className="border-tfl-ink/10 pointer-events-auto max-w-xs border bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
-            <h2 className="text-tfl-grey mb-1 font-bold tracking-wider uppercase">
-              Line status
-            </h2>
+          <div className="border-tfl-ink/10 pointer-events-auto max-h-[60vh] max-w-xs overflow-y-auto border bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
             <LineStatus status={status} lines={network?.lines} />
           </div>
         </div>

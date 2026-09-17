@@ -47,6 +47,13 @@ const DIMMED = 0.25
 // expression cannot be nested inside the multiply that does it.
 const LINE_WIDTH_MIN = 1.5
 const LINE_WIDTH_MAX = 5
+
+// How far apart lines sharing a stretch of track are pushed: one line width
+// plus a little daylight. Exactly one width makes them touch, which at a
+// glance reads as one thick stripe rather than two lines - the Metropolitan
+// and the Piccadilly looked like a single purple-blue band out to Uxbridge.
+const LINE_GAP_MIN = LINE_WIDTH_MIN + 1
+const LINE_GAP_MAX = LINE_WIDTH_MAX + 2.5
 const LINE_WIDTH = [
   'interpolate',
   ['linear'],
@@ -302,9 +309,9 @@ function addLayers(m, { segments, stations, drawn }) {
         ['linear'],
         ['zoom'],
         9,
-        ['*', ['get', 'offset'], LINE_WIDTH_MIN],
+        ['*', ['get', 'offset'], LINE_GAP_MIN],
         13,
-        ['*', ['get', 'offset'], LINE_WIDTH_MAX],
+        ['*', ['get', 'offset'], LINE_GAP_MAX],
       ],
     },
   })
