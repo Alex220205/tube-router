@@ -171,33 +171,13 @@ export function toGeoJson(network) {
     })
   }
 
-  // How many lines meet at each station, so the map can draw an interchange
-  // bigger than a single-line stop.
-  //
-  // It is not decoration. Lines sharing track are drawn offset either side of
-  // it, so at a station served by three lines the outermost are a full line
-  // width from the point the station marker sits on. A marker sized for one
-  // line would float in the gap, touching none of them. TfL's own map solves
-  // this the same way, with a marker that spans the lines it serves.
-  const linesAtStation = new Map()
-  for (const segment of segments) {
-    for (const id of [segment.origin_station_id, segment.destination_station_id]) {
-      if (!linesAtStation.has(id)) linesAtStation.set(id, new Set())
-      linesAtStation.get(id).add(segment.line_id)
-    }
-  }
-
   return {
     segments: { type: 'FeatureCollection', features },
     stations: {
       type: 'FeatureCollection',
       features: stations.map((station) => ({
         type: 'Feature',
-        properties: {
-          name: shortName(station.name),
-          naptanId: station.naptan_id,
-          lines: linesAtStation.get(station.id)?.size ?? 1,
-        },
+        properties: { name: shortName(station.name), naptanId: station.naptan_id },
         geometry: { type: 'Point', coordinates: [station.lon, station.lat] },
       })),
     },

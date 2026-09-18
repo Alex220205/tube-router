@@ -67,11 +67,13 @@ const LINE_WIDTH_MAX = 5
 // measured at zoom 14: 5px lines with 7px of daylight - rather than the thin
 // seam that reads as one thick stripe.
 //
-// It cannot simply be raised further. Station markers sit at the station's
-// real position while the lines are pushed off it, so the wider the fan the
-// further the outermost line is from the dot it is supposed to call at. The
-// marker grows to match - see STATION_RADIUS below - and the two numbers have
-// to be changed together.
+// There is a ceiling on this, and it is the station markers. They sit at the
+// station's real position while the lines are pushed off it, so the wider the
+// fan the further the outermost line is from the dot it is supposed to call
+// at. Growing the markers to span the fan was tried and looked far worse -
+// at anything below zoom 13 central London became a field of overlapping
+// white blobs with the network hidden underneath. Small dots and a fan the
+// dots can still nearly reach is the better trade.
 const LINE_GAP_MIN = LINE_WIDTH_MIN * 2.4
 const LINE_GAP_MAX = LINE_WIDTH_MAX * 2.4
 const LINE_WIDTH = [
@@ -355,22 +357,7 @@ function addLayers(m, { segments, stations, drawn }) {
     type: 'circle',
     source: 'stations',
     paint: {
-      // Sized to span the lines that meet here. A station on one line is a
-      // small dot; an interchange is drawn wide enough to touch every line in
-      // the fan, the way TfL's own map draws one marker across the lines it
-      // serves. `lines` is counted in network-geojson.js.
-      //
-      // Half the gap per extra line, because the fan is centred: with three
-      // lines the outermost sits one whole gap from the middle.
-      'circle-radius': [
-        'interpolate',
-        ['linear'],
-        ['zoom'],
-        9,
-        ['+', 1.6, ['*', ['-', ['min', ['get', 'lines'], 3], 1], LINE_GAP_MIN / 2]],
-        13,
-        ['+', 4, ['*', ['-', ['min', ['get', 'lines'], 3], 1], LINE_GAP_MAX / 2]],
-      ],
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 1.6, 13, 4],
       'circle-color': STATION_FILL,
       'circle-stroke-color': INK,
       'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 9, 0.5, 13, 1.2],
