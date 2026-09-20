@@ -63,28 +63,17 @@ const LINE_WIDTH_MIN = 1.5
 const LINE_WIDTH_MAX = 5
 
 // How far apart lines sharing a stretch of track are pushed, centre to
-// centre, as a multiple of the line width.
+// centre. Exactly one line width, so they sit edge to edge with no
+// background between them - a band of colour, the way TfL's own map draws
+// the Circle, Hammersmith & City and Metropolitan running together from
+// Baker Street round to Liverpool Street.
 //
-// The value is a narrow window and both edges of it are wrong:
-//
-//   1.0   lines abut exactly. No background between them, so a green and a
-//         blue read as one thick line that changes colour partway along -
-//         which is what Ealing Common to Acton Town looked like.
-//   2.4   a full line width of daylight. They stop reading as one shared
-//         stretch of track and look like two unrelated lines that happen to
-//         run parallel.
-//
-// 1.4 leaves about two pixels of background at full zoom: enough to see two
-// lines, little enough that they still read as one corridor. A hairline, not
-// a gap.
-//
-// There is also a ceiling that has nothing to do with taste. Station markers
-// sit at the station's true position while the lines are pushed off it, so
-// the wider the fan the further the outermost line is from the dot it is
-// meant to call at. Past roughly 1.5 the outer line of a three-line bundle
-// visibly misses its own station.
-const LINE_GAP_MIN = LINE_WIDTH_MIN * 1.4
-const LINE_GAP_MAX = LINE_WIDTH_MAX * 1.4
+// It also keeps the lines inside their station markers. Those sit at the
+// station's true position while the lines are pushed off it, so a wide fan
+// leaves the outermost line further from the dot it is meant to call at. At
+// 1.0 a pair sits half a width either side of centre, comfortably inside.
+const LINE_GAP_MIN = LINE_WIDTH_MIN
+const LINE_GAP_MAX = LINE_WIDTH_MAX
 const LINE_WIDTH = [
   'interpolate',
   ['linear'],

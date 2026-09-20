@@ -122,19 +122,24 @@ describe('toGeoJson', () => {
 
     // And within each link the two lines are pushed to opposite sides, the
     // same line to the same side both times.
+    //
+    // Piccadilly on the left, Victoria on the right, because that is the
+    // order LINE_ORDER gives them - not the order of their ids, which is the
+    // reverse. Pinning the actual colours rather than just "they differ" is
+    // what makes this catch a change to that list.
+    //
+    // Keyed by colour rather than compared as a list: the order features come
+    // out in follows the order segments appear in the payload, which is not
+    // what this is testing.
     const offsetsFor = (lon) =>
-      segments.features
-        .filter((f) => f.geometry.coordinates[0][0] === lon)
-        .map((f) => [f.properties.colour, f.properties.offset])
+      Object.fromEntries(
+        segments.features
+          .filter((f) => f.geometry.coordinates[0][0] === lon)
+          .map((f) => [f.properties.colour, f.properties.offset]),
+      )
 
-    expect(offsetsFor(-0.45)).toEqual([
-      ['#0098D4', -0.5],
-      ['#003688', 0.5],
-    ])
-    expect(offsetsFor(-0.35)).toEqual([
-      ['#0098D4', -0.5],
-      ['#003688', 0.5],
-    ])
+    expect(offsetsFor(-0.45)).toEqual({ '#003688': -0.5, '#0098D4': 0.5 })
+    expect(offsetsFor(-0.35)).toEqual({ '#003688': -0.5, '#0098D4': 0.5 })
   })
 
   it('skips a segment naming a station the payload does not contain', () => {

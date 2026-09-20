@@ -31,6 +31,33 @@ import { shortName } from './station-name'
 // missing value - visibly wrong beats invisibly absent.
 export const UNKNOWN_LINE_COLOUR = '#7f7f7f'
 
+// Which line sits on which side when several share a stretch of track.
+// Earlier in this list means further to the LEFT of travel, and links are
+// always drawn west to east, so earlier means the northern or upper side.
+//
+// The order is editorial and has to be: line ids come from the order the seed
+// inserted rows and mean nothing visually. Sorting by id put the District
+// above the Piccadilly from Ealing Common down to Acton Town, which is the
+// wrong way round - the District arrives at Ealing Common from the west (via
+// Ealing Broadway) and the Piccadilly from the east (via North Ealing), so
+// drawing the District on the upper side makes the two cross at the station.
+//
+// A line missing from this list sorts last, which is stable rather than
+// correct - add it here if it ever shares track.
+const LINE_ORDER = [
+  'circle',
+  'hammersmith-city',
+  'metropolitan',
+  'piccadilly',
+  'district',
+  'bakerloo',
+  'central',
+  'jubilee',
+  'northern',
+  'victoria',
+  'waterloo-city',
+]
+
 /**
  * One physical stretch of track, whichever way round it is described.
  *
@@ -142,10 +169,16 @@ export function toGeoJson(network) {
     // multiple of one line-width either side of the centre: a lone line gets
     // 0, a pair gets -0.5 and +0.5, a trio -1, 0 and +1.
     //
-    // Sorted by line id so the order is stable. Without that the same link
-    // could fan out differently between two renders of identical data, which
-    // would look like the map twitching for no reason.
-    const bundle = [...linesOnLink.get(link)].sort((a, b) => a - b)
+    // Sorted by LINE_ORDER so the order is both stable and chosen. Without a
+    // fixed order the same link could fan out differently between two renders
+    // of identical data, which would look like the map twitching for no
+    // reason; without a chosen one, the side a line lands on is decided by
+    // the order rows happened to be inserted.
+    const rank = (id) => {
+      const i = LINE_ORDER.indexOf(lineById.get(id)?.code)
+      return i === -1 ? LINE_ORDER.length : i
+    }
+    const bundle = [...linesOnLink.get(link)].sort((a, b) => rank(a) - rank(b))
     const offset = bundle.indexOf(segment.line_id) - (bundle.length - 1) / 2
 
     // Always west to east, whichever way round this segment happens to be

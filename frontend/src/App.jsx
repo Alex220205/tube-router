@@ -68,8 +68,13 @@ export default function App() {
   const status = useLiveStatus()
 
 
+  // fixed inset-0, not h-screen w-screen. 100vw INCLUDES the scrollbar on
+  // Windows, so the moment anything makes one appear this element is wider
+  // than the visible page and the bottom-right card sits past the right edge,
+  // clipped by overflow-hidden. inset-0 on a fixed element is exactly the
+  // viewport, with no such arithmetic.
   return (
-    <main className="bg-tfl-paper text-tfl-ink relative h-screen w-screen overflow-hidden font-sans">
+    <main className="bg-tfl-paper text-tfl-ink fixed inset-0 overflow-hidden font-sans">
       <TubeMap network={network} route={route} onError={setMapError} />
 
       {/* Everything below floats over the map. pointer-events-none on the
