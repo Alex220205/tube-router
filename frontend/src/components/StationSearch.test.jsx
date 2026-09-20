@@ -17,9 +17,14 @@
  *
  * WHAT'S NEW
  *     The component takes an id and a label now, so these render it the way
- *     App does. Still three tests: Phase 8b made it reusable, which is not a
- *     new failure mode - whether the label prop reaches the label is the kind
- *     of thing that fails loudly, at once, in every other test here.
+ *     App does. Phase 8b made it reusable, which is not a new failure mode -
+ *     whether the label prop reaches the label is the kind of thing that
+ *     fails loudly, at once, in every other test here.
+ *
+ *     Two more since, both about the keyboard, because a keyboard path that
+ *     breaks does not throw: the key is pressed, nothing happens, and the
+ *     only person who finds out is someone who was not going to use the
+ *     mouse anyway.
  */
 
 import { render, screen, waitFor } from '@testing-library/react'
@@ -33,6 +38,10 @@ function mockStations(handler) {
 
 function ok(body) {
   return { ok: true, status: 200, json: async () => body }
+}
+
+function station(id, naptan, name) {
+  return { id, naptan_id: naptan, name }
 }
 
 // Rendered the way App renders it. Nothing is selected, which is the state
@@ -92,6 +101,57 @@ describe('StationSearch', () => {
     // An empty result is a successful answer. Rendering nothing would leave
     // the user unable to tell it apart from a broken request.
     expect(await screen.findByText(/No stations match/)).toBeInTheDocument()
+  })
+
+  it('picks the only result on Enter', async () => {
+    mockStations(() =>
+      Promise.resolve(
+        ok([station(1, '940GZZLUOXC', 'Oxford Circus Underground Station')]),
+      ),
+    )
+
+    const chosen = vi.fn()
+    renderSearch(chosen)
+
+    const box = screen.getByLabelText('From')
+    await userEvent.type(box, 'oxf')
+    await screen.findByText('Oxford Circus')
+
+    // Nothing left to choose between, so typing enough to be unambiguous is
+    // the choice. Without this the user types a full station name, sees one
+    // row, presses Enter and watches nothing happen.
+    await userEvent.keyboard('{Enter}')
+
+    await waitFor(() => expect(chosen).toHaveBeenCalledTimes(1))
+    expect(chosen.mock.calls[0][0].naptan_id).toBe('940GZZLUOXC')
+  })
+
+  it('walks the list with the arrow keys and picks with Enter', async () => {
+    mockStations(() =>
+      Promise.resolve(
+        ok([
+          station(1, '940GZZLUHR4', 'Heathrow Terminal 4 Underground Station'),
+          station(2, '940GZZLUHR5', 'Heathrow Terminal 5 Underground Station'),
+        ]),
+      ),
+    )
+
+    const chosen = vi.fn()
+    renderSearch(chosen)
+
+    await userEvent.type(screen.getByLabelText('From'), 'heathrow')
+    await screen.findByText('Heathrow Terminal 4')
+
+    // Down into the list, down again, then Enter. With more than one result
+    // Enter in the box deliberately does nothing, so this IS the keyboard
+    // path to a choice - if focus does not move, there is no other one.
+    await userEvent.keyboard('{ArrowDown}')
+    expect(screen.getByText('Heathrow Terminal 4')).toHaveFocus()
+
+    await userEvent.keyboard('{ArrowDown}{Enter}')
+
+    await waitFor(() => expect(chosen).toHaveBeenCalledTimes(1))
+    expect(chosen.mock.calls[0][0].naptan_id).toBe('940GZZLUHR5')
   })
 
   it('reports an unreachable API instead of appearing to find nothing', async () => {
