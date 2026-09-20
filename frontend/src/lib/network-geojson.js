@@ -210,7 +210,15 @@ export function toGeoJson(network) {
       type: 'FeatureCollection',
       features: stations.map((station) => ({
         type: 'Feature',
-        properties: { name: shortName(station.name), naptanId: station.naptan_id },
+        properties: {
+          name: shortName(station.name),
+          naptanId: station.naptan_id,
+          // At least one platform reachable without stairs. Drawn as a ring
+          // colour rather than a wheelchair glyph: a 12px icon is unreadable
+          // at the zoom where a whole line fits, and a ring is legible at
+          // every zoom the map has.
+          stepFree: Boolean(station.step_free),
+        },
         geometry: { type: 'Point', coordinates: [station.lon, station.lat] },
       })),
     },
