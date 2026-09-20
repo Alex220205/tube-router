@@ -72,6 +72,7 @@ def to_payload(statuses: list[LineStatus]) -> dict[str, Any]:
                 "description": s.description,
                 "reason": s.reason,
                 "running": s.running,
+                "affected_stops": sorted(s.affected_stops),
             }
             for s in statuses
         ],
@@ -183,14 +184,49 @@ async def not_running_lines() -> frozenset[str]:
         the network, because the failure that strands someone is refusing a
         journey that was perfectly possible.
     """
+    return frozenset(
+        code for code, stops in (await _suppressions()).items() if not stops
+    )
+
+
+async def closed_sections() -> dict[str, frozenset[str]]:
+    """The shut stretch of each partly closed line, from the last known status.
+
+    Returns:
+        Line code to NaPTAN ids, for Network.without_closed_sections. Lines
+        that are wholly shut are not here - they come back from
+        not_running_lines instead, and the two sets never overlap.
+    """
+    return {code: stops for code, stops in (await _suppressions()).items() if stops}
+
+
+async def _suppressions() -> dict[str, frozenset[str]]:
+    """Every line with no trains, mapped to the stops that are shut.
+
+    An empty set of stops means the whole line. Both callers above read this
+    so the split between "all of it" and "part of it" is decided once.
+
+    Empty overall when the poller has not run, when Redis is unreachable, or
+    on a good day, and all three are the same answer on purpose: an unknown
+    status must not remove lines from the network, because the failure that
+    strands someone is refusing a journey that was perfectly possible.
+    """
     stored = await current()
     lines = stored.get("lines")
     if not isinstance(lines, list):
-        return frozenset()
-    return frozenset(
-        line["line_code"]
-        for line in lines
-        if isinstance(line, dict)
-        and line.get("running") is False
-        and isinstance(line.get("line_code"), str)
-    )
+        return {}
+
+    out: dict[str, frozenset[str]] = {}
+    for line in lines:
+        if not isinstance(line, dict) or line.get("running") is not False:
+            continue
+        code = line.get("line_code")
+        if not isinstance(code, str):
+            continue
+        stops = line.get("affected_stops")
+        out[code] = (
+            frozenset(s for s in stops if isinstance(s, str))
+            if isinstance(stops, list)
+            else frozenset()
+        )
+    return out

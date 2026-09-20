@@ -130,7 +130,20 @@ async def plan_route(request: RouteRequest, session: SessionDep) -> RouteRespons
         # often clears within the hour and rerouting someone around a line
         # that is still moving gives them a worse trip for nothing.
         disrupted = await status_poller.not_running_lines()
-        avoided = sorted(disrupted)
+
+        # A line shut between two places is not a line that is shut. TfL says
+        # which stretch in affectedStops, so those rides come out of the
+        # network and the rest of the line keeps running - the District is
+        # closed west of Earl's Court most weekends and its eastern half is
+        # untouched.
+        sections = await status_poller.closed_sections()
+        if sections:
+            network = network.without_closed_sections(sections)
+
+        # Both kinds are reported, because either can make a journey look
+        # strange, and "avoiding the District" is the only thing that explains
+        # a route going the long way round.
+        avoided = sorted(disrupted | frozenset(sections))
 
         result = find_route(
             network,

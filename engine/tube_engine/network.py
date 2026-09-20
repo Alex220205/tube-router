@@ -53,7 +53,8 @@ CONSTRAINT
     Enforced by tests/test_imports.py.
 """
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Set as AbstractSet
 
 from .types import Edge, Interchange, LineId, Station, StationId
 
@@ -283,5 +284,55 @@ class Network:
                 if interchange.from_line not in excluded
                 and interchange.to_line not in excluded
             ),
+            step_free_platforms=self._step_free,
+        )
+
+    def without_closed_sections(
+        self, closures: Mapping[LineId, AbstractSet[StationId]]
+    ) -> "Network":
+        """A network with only the closed stretch of each line removed.
+
+        TfL's status feed distinguishes a line that is shut from a line that
+        is shut *between two places*, and `without_lines` cannot express the
+        second. Removing the whole District because it is closed west of
+        Earl's Court costs a traveller the entire eastern half of a line that
+        is running normally.
+
+        Args:
+            closures: Line id to the stations that line does not serve. Comes
+                from TfL's `affectedStops`, so the ids are NaPTAN and match
+                Station.id directly.
+
+        Returns:
+            A new Network with those rides gone, or this one unchanged when
+            nothing was closed.
+
+        **An edge goes only when BOTH of its ends are closed.** That is not a
+        detail, it is the whole rule. TfL lists the boundary stations as
+        affected: Earl's Court appears in the District's closure because the
+        closure starts there, but District trains still call at Earl's Court
+        from the east. Dropping every edge that merely touches a closed
+        station would sever Earl's Court to Gloucester Road, which is running.
+
+        Interchanges are left alone on purpose. A station in the middle of a
+        closure becomes unreachable on that line anyway, because every edge
+        into it has gone, and a change nobody can arrive at costs nothing.
+        Removing them would also strand the boundary stations, which are still
+        served from the other side.
+        """
+        closed = {line: frozenset(stops) for line, stops in closures.items() if stops}
+        if not closed:
+            return self
+
+        def open_section(edge: Edge) -> bool:
+            stops = closed.get(edge.line)
+            if stops is None:
+                return True
+            return not (edge.origin in stops and edge.destination in stops)
+
+        return Network(
+            stations=self._stations.values(),
+            edges=(edge for edge in self._all_edges() if open_section(edge)),
+            interchanges=self._all_interchanges(),
             step_free_platforms=self._step_free,
         )

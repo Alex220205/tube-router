@@ -255,9 +255,16 @@ class TfLClient:
 
         Returns:
             Eleven line objects, each carrying lineStatuses with a
-            statusSeverity, its description, and a reason where there is one.
+            statusSeverity, its description, a reason where there is one, and
+            the stations a partial closure affects.
+
+        **`detail=true` is what populates `disruption.affectedStops`.** Without
+        it that array comes back empty on every line, including lines TfL is
+        currently reporting as a Part Closure, and the only record of which
+        stretch is shut is English prose in `reason`. With it, the stops arrive
+        as NaPTAN ids that match `stations.naptan_id` exactly.
         """
-        return list(await self._get_json("/Line/Mode/tube/Status"))
+        return list(await self._get_json("/Line/Mode/tube/Status?detail=true"))
 
     async def route_sequence(
         self, line_id: str, direction: Direction

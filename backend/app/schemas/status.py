@@ -47,6 +47,15 @@ class LineStatusPublic(BaseModel):
     reason: str | None = Field(
         default=None, description="The sentence a user reads. Null when all is well."
     )
+    affected_stops: list[str] = Field(
+        default_factory=list,
+        description=(
+            "NaPTAN ids of the stations a partial closure covers. Empty when "
+            "the line is fine, and empty when the whole line is shut - there "
+            "is no part to name then. A client can use it to say WHERE a line "
+            "is closed rather than only that it is."
+        ),
+    )
     running: bool = Field(
         description=(
             "False only when trains are not moving - closed, suspended or "

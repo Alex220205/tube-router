@@ -41,6 +41,10 @@ from typing import Any
 # twenty minutes, and rerouting a user around a line that is still running -
 # without being asked - gives them a worse journey for a condition that may
 # have gone by the time they reach the platform.
+# Taken from /Line/Meta/Severity rather than from memory. The first version
+# of this set was written from the values that had been seen in the wild, and
+# it missed 11 and 16 entirely - a line reporting either would have been
+# treated as running normally.
 NOT_RUNNING = frozenset(
     {
         1,  # Closed
@@ -48,9 +52,16 @@ NOT_RUNNING = frozenset(
         3,  # Part Suspended
         4,  # Planned Closure
         5,  # Part Closure
+        11,  # Part Closed
+        16,  # Not Running
         20,  # Service Closed
     }
 )
+
+# Severities that shut only part of a line. For these, TfL's affectedStops
+# says which part, and the router suppresses that stretch instead of the whole
+# line. The rest of NOT_RUNNING means the line is gone entirely.
+PARTIAL = frozenset({3, 5, 11})
 
 # What TfL reports when nothing is wrong, and what an absent status is treated
 # as. Optimistic on purpose: the failure to avoid is removing a line from the
@@ -71,17 +82,35 @@ class LineStatus:
         description: TfL's own words - "Severe Delays".
         reason: The sentence a user reads, where there is one. None on a line
             with nothing wrong.
+        affected_stops: NaPTAN ids of the stations a partial closure covers,
+            from TfL's affectedStops. Empty on a healthy line, and empty on a
+            whole-line closure too - there is no "part" to name when the whole
+            thing is shut, which is why `closed_entirely` tests both.
     """
 
     line_code: str
     severity: int
     description: str
     reason: str | None
+    affected_stops: frozenset[str] = frozenset()
 
     @property
     def running(self) -> bool:
         """Whether trains are moving on this line at all."""
         return self.severity not in NOT_RUNNING
+
+    @property
+    def closed_entirely(self) -> bool:
+        """Whether the whole line is gone, rather than one stretch of it.
+
+        A Part Closure with a list of affected stops suppresses only that
+        stretch. The same severity with no stops has to be treated as the
+        whole line: TfL said trains are not running and declined to say
+        where, and guessing "probably fine" would route someone onto it.
+        """
+        return not self.running and not (
+            self.severity in PARTIAL and self.affected_stops
+        )
 
 
 def statuses_from_payload(payload: Any) -> list[LineStatus]:
@@ -127,6 +156,7 @@ def statuses_from_payload(payload: Any) -> list[LineStatus]:
                     worst.get("statusSeverityDescription") or "Unknown"
                 ).strip(),
                 reason=_reason(worst),
+                affected_stops=_affected_stops(worst),
             )
         )
 
@@ -143,7 +173,48 @@ def not_running(statuses: list[LineStatus]) -> frozenset[str]:
         Line codes, ready to pass to Network.without_lines(). Empty on a good
         day, which is most days.
     """
-    return frozenset(s.line_code for s in statuses if not s.running)
+    return frozenset(s.line_code for s in statuses if s.closed_entirely)
+
+
+def closed_sections(statuses: list[LineStatus]) -> dict[str, frozenset[str]]:
+    """The stretch of each partly closed line that has no trains on it.
+
+    Args:
+        statuses: Output of statuses_from_payload.
+
+    Returns:
+        Line code to NaPTAN ids, ready for Network.without_closed_sections.
+        Only lines that are partly closed AND told us where appear here;
+        everything else is either running or handled by not_running.
+    """
+    return {
+        s.line_code: s.affected_stops
+        for s in statuses
+        if not s.running and not s.closed_entirely
+    }
+
+
+def _affected_stops(entry: dict[str, Any]) -> frozenset[str]:
+    """NaPTAN ids from disruption.affectedStops, or empty if TfL said nothing.
+
+    Empty is the safe answer at every step: a stop list we cannot read leaves
+    the line wholly suppressed rather than partly, which is the error that
+    refuses a journey rather than the one that sends someone to a shut
+    platform.
+    """
+    disruption = entry.get("disruption")
+    if not isinstance(disruption, dict):
+        return frozenset()
+
+    stops = disruption.get("affectedStops")
+    if not isinstance(stops, list):
+        return frozenset()
+
+    return frozenset(
+        stop["naptanId"]
+        for stop in stops
+        if isinstance(stop, dict) and isinstance(stop.get("naptanId"), str)
+    )
 
 
 def _severity(entry: dict[str, Any]) -> int:
