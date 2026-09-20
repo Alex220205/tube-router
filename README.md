@@ -54,8 +54,35 @@ and therefore the data.
 | API docs | http://localhost:8000/docs |
 | Health | http://localhost:8000/health |
 
-The frontend currently searches stations. Planning a journey is `POST /route`,
-which is easiest to try from the API docs page until the map arrives.
+Pick two stations, choose fastest, fewest changes or step-free, and the route
+is drawn over the network with its legs written out beside it. Live disruption
+from TfL arrives over a WebSocket, and a line that is part closed has only its
+closed stretch avoided rather than the whole line.
+
+### Changing the code
+
+The frontend container serves a **static build made when the image was
+built**. Editing a file under `frontend/src` changes nothing you can see until
+the image is rebuilt:
+
+```bash
+docker compose up -d --build frontend
+```
+
+For anything more than a one-off change, run the dev server directly instead
+and get hot reload:
+
+```bash
+docker compose stop frontend          # it is holding port 5173
+cd frontend && npm install && npm run dev
+```
+
+The page is on http://localhost:5173 either way, and the API base URL falls
+back to `http://localhost:8000`, so no environment file is needed for this.
+`docker compose start frontend` puts it back.
+
+The backend container has no source mount and no `--reload` either, by the
+same deliberate trade: `docker compose up -d --build api`.
 
 ## Tests
 
