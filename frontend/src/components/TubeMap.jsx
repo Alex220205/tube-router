@@ -63,19 +63,21 @@ const LINE_WIDTH_MIN = 1.5
 const LINE_WIDTH_MAX = 5
 
 // How far apart lines sharing a stretch of track are pushed, centre to
-// centre. At 2.4x the line width that leaves clear background between them -
-// measured at zoom 14: 5px lines with 7px of daylight - rather than the thin
-// seam that reads as one thick stripe.
+// centre. Exactly one line width, so they sit edge to edge with no
+// background between them - a band of colour, the way TfL's own map draws
+// the Circle, Hammersmith & City and Metropolitan running together from
+// Baker Street round to Liverpool Street.
 //
-// There is a ceiling on this, and it is the station markers. They sit at the
-// station's real position while the lines are pushed off it, so the wider the
-// fan the further the outermost line is from the dot it is supposed to call
-// at. Growing the markers to span the fan was tried and looked far worse -
-// at anything below zoom 13 central London became a field of overlapping
-// white blobs with the network hidden underneath. Small dots and a fan the
-// dots can still nearly reach is the better trade.
-const LINE_GAP_MIN = LINE_WIDTH_MIN * 2.4
-const LINE_GAP_MAX = LINE_WIDTH_MAX * 2.4
+// Anything above 1.0 opens daylight between them and they stop reading as
+// one shared stretch of track. Anything below overlaps, and the line on top
+// hides the one beneath.
+//
+// It also keeps the lines inside their station markers. The markers sit at
+// the station's true position, so a wide fan leaves the outermost line
+// further from the dot it is supposed to call at - at 1.0 a pair sits half a
+// width either side of centre, comfortably inside the marker.
+const LINE_GAP_MIN = LINE_WIDTH_MIN
+const LINE_GAP_MAX = LINE_WIDTH_MAX
 const LINE_WIDTH = [
   'interpolate',
   ['linear'],
