@@ -38,8 +38,21 @@ from app.services.tfl import TfLClient, TfLError
 # Where the current picture lives, and where a change is announced. Versioned
 # like the network cache key, so a deploy that changes the shape below treats
 # an older entry as absent rather than unpacking it wrongly.
-STATUS_KEY = "tube-router:status:v1"
-STATUS_CHANNEL = "tube-router:status"
+#
+# **v2 because the shape changed**: entries now carry affected_stops, and a v1
+# entry has no such key. Read as v2 it looks like a line that is not running
+# with nothing closed on it, which the router correctly treats as the whole
+# line being shut - so a stale entry does not merely go unused, it silently
+# reverts partial closures to whole-line avoidance.
+#
+# That is not hypothetical. A stray uvicorn left running from an unrelated
+# test kept polling with the old code and overwriting v1 every sixty seconds,
+# and the API alternated between correct and wrong answers depending on which
+# poller wrote last. Versioning the key is what makes two versions of this
+# service coexist without fighting, which is the whole reason the convention
+# exists.
+STATUS_KEY = "tube-router:status:v2"
+STATUS_CHANNEL = "tube-router:status:v2"
 
 # Comfortably longer than the poll interval, so the key only expires if the
 # poller has actually stopped. An entry that outlives a dead poller is worse

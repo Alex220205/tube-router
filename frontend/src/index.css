@@ -25,3 +25,19 @@
   --color-tfl-green: #007a33;
   --color-tfl-amber: #ffb400;
 }
+
+/* Tailwind v4 dropped `cursor: pointer` from its button reset - v3 set it and
+   v4 deliberately does not, on the grounds that the native default is
+   `default`. On a web page that reads as broken: nothing indicates a control
+   is clickable until you click it.
+   
+   Labels are here because the objective toggle is a radio group whose inputs
+   are sr-only, so the label IS the button as far as anyone using it is
+   concerned. */
+@layer base {
+  button:not(:disabled),
+  [role='button']:not(:disabled),
+  label:has(input[type='radio']:not(:disabled)) {
+    cursor: pointer;
+  }
+}
