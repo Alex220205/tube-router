@@ -160,6 +160,7 @@ export default function App() {
                   error={routeError}
                   objective={objective}
                   lines={network?.lines}
+                  stations={network?.stations}
                 />
 
                 {networkLoading && (
