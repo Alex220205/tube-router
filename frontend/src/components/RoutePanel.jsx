@@ -97,7 +97,7 @@ export default function RoutePanel({ route, loading, error, objective, lines }) 
     return (
       <div className="border-tfl-line mt-5 border-t pt-4">
         <p className="text-sm font-medium">{message}</p>
-        <AvoidedLines codes={route.avoided_for_disruption} lines={lines} />
+        <Disruption route={route} lines={lines} />
       </div>
     )
   }
@@ -158,25 +158,44 @@ export default function RoutePanel({ route, loading, error, objective, lines }) 
         })}
       </ol>
 
-      <AvoidedLines codes={route.avoided_for_disruption} lines={lines} />
+      <Disruption route={route} lines={lines} />
     </div>
   )
 }
 
 /**
- * Why the journey may look strange. Nothing at all when nothing was avoided.
+ * Why the journey may look strange. Nothing at all when nothing is disrupted.
  *
- * @param {{codes: Array<string>, lines: Array}} props
+ * Two kinds, and conflating them makes the page contradict itself. A line
+ * that is wholly shut is not available; a line with one stretch closed is
+ * still running, and this route may well be using it. Heathrow Terminal 5 to
+ * Epping rides the Piccadilly out to Rayners Lane while the middle of the
+ * Piccadilly is closed, and a banner reading "avoiding Piccadilly, no trains
+ * running" above a first leg on the Piccadilly is simply wrong.
+ *
+ * @param {{route: object, lines: Array}} props
  */
-function AvoidedLines({ codes, lines }) {
-  if (!codes || codes.length === 0) return null
-
+function Disruption({ route, lines }) {
   const byCode = new Map((lines ?? []).map((line) => [line.code, line]))
-  const names = codes.map((code) => byCode.get(code)?.name ?? code)
+  const name = (code) => byCode.get(code)?.name ?? code
+
+  const shut = route.avoided_for_disruption ?? []
+  const partial = route.partly_closed ?? []
+  if (shut.length === 0 && partial.length === 0) return null
 
   return (
-    <p className="border-tfl-amber bg-tfl-amber/10 mt-4 border-l-4 px-3 py-2 text-xs">
-      Avoiding {names.join(', ')} - no trains running.
-    </p>
+    <div className="mt-4 space-y-2">
+      {shut.length > 0 && (
+        <p className="border-tfl-amber bg-tfl-amber/10 border-l-4 px-3 py-2 text-xs">
+          Avoiding {shut.map(name).join(', ')} - no trains running.
+        </p>
+      )}
+      {partial.length > 0 && (
+        <p className="border-tfl-amber bg-tfl-amber/10 border-l-4 px-3 py-2 text-xs">
+          {partial.map(name).join(', ')} {partial.length === 1 ? 'is' : 'are'} part
+          closed. This route avoids the closed section.
+        </p>
+      )}
+    </div>
   )
 }

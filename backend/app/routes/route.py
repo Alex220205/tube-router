@@ -48,7 +48,9 @@ router = APIRouter(prefix="/route", tags=["route"])
 OBJECTIVES = {objective.value: objective for objective in Objective}
 
 
-def _to_response(network: Network, result: Route, avoided: list[str]) -> RouteResponse:
+def _to_response(
+    network: Network, result: Route, avoided: list[str], partial: list[str]
+) -> RouteResponse:
     """Turn an engine Route into the wire format, resolving names as it goes.
 
     The engine speaks in NaPTAN ids because it must not care what anything is
@@ -58,6 +60,7 @@ def _to_response(network: Network, result: Route, avoided: list[str]) -> RouteRe
     return RouteResponse(
         found=True,
         avoided_for_disruption=avoided,
+        partly_closed=partial,
         total_seconds=result.total_seconds,
         changes=result.changes,
         step_free=result.step_free,
@@ -140,10 +143,13 @@ async def plan_route(request: RouteRequest, session: SessionDep) -> RouteRespons
         if sections:
             network = network.without_closed_sections(sections)
 
-        # Both kinds are reported, because either can make a journey look
-        # strange, and "avoiding the District" is the only thing that explains
-        # a route going the long way round.
-        avoided = sorted(disrupted | frozenset(sections))
+        # Reported separately, because they mean different things to a
+        # traveller. A wholly shut line is not available at all; a partly
+        # closed one is still running and this route may use it, which is
+        # exactly what Heathrow Terminal 5 to Epping does on the Piccadilly
+        # while the middle of that line is shut.
+        avoided = sorted(disrupted)
+        partial = sorted(sections)
 
         result = find_route(
             network,
@@ -156,14 +162,17 @@ async def plan_route(request: RouteRequest, session: SessionDep) -> RouteRespons
         )
 
         if isinstance(result, Route):
-            return _to_response(network, result, avoided)
+            return _to_response(network, result, avoided, partial)
 
         # Real stations, no journey between them. A 200 with a reason: the
         # question was well-formed and this is its answer. The avoided list
         # goes out here too - "no route" and "no route while the Piccadilly is
         # suspended" are different answers and a caller should see which.
         return RouteResponse(
-            found=False, reason=result.reason, avoided_for_disruption=avoided
+            found=False,
+            reason=result.reason,
+            avoided_for_disruption=avoided,
+            partly_closed=partial,
         )
 
     except HTTPException:

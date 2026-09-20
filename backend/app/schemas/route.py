@@ -124,9 +124,19 @@ class RouteResponse(BaseModel):
     avoided_for_disruption: list[str] = Field(
         default_factory=list,
         description=(
-            "Lines excluded because TfL reports no trains running on them. "
-            "Populated whether or not a route was found, so a caller can tell "
-            "a strange-looking journey from a broken one - and can tell "
+            "Lines excluded ENTIRELY because TfL reports no trains running on "
+            "them. Populated whether or not a route was found, so a caller can "
+            "tell a strange-looking journey from a broken one - and can tell "
             "'nowhere to go' from 'nowhere to go while the Piccadilly is shut'."
+        ),
+    )
+    partly_closed: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Lines with one stretch shut. The rest of the line is running and "
+            "the route may well use it, so these are NOT in "
+            "avoided_for_disruption - saying 'avoiding the Piccadilly, no "
+            "trains running' on a journey whose first leg is the Piccadilly is "
+            "a page contradicting itself."
         ),
     )
