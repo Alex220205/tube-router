@@ -35,8 +35,13 @@ import { useState } from 'react'
 // those are MapLibre paint values in a WebGL canvas and these are CSS on DOM
 // nodes, so they cannot be the same object - but they must be the same
 // colours, and saying so here is what keeps them honest.
-const INK = '#1c1c1b'
-const STEP_FREE = '#0019a8'
+//
+// Exported because RoutePanel's station list draws the same two marks. This
+// file is what says a blue ring means step-free, so anything else drawing one
+// takes the colour from here rather than deciding for itself. A key that
+// disagrees with the thing it is describing is worse than no key.
+export const INK = '#1c1c1b'
+export const STEP_FREE = '#0019a8'
 
 export default function MapKey({ lines }) {
   const [open, setOpen] = useState(false)
