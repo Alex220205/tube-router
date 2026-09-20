@@ -55,6 +55,14 @@ const PAPER = '#f7f7f5' // --color-tfl-paper, the canvas and label halos
 const INK = '#1c1c1b' // --color-tfl-ink, station rings and label text
 const STATION_FILL = '#ffffff'
 
+// The ring round a station marker. Step-free stations get TfL blue instead of
+// ink, which is the cheap version of the wheelchair symbol on TfL's own map:
+// a 12px glyph is illegible at the zoom where a whole line fits, and a ring
+// reads at every zoom this map has. The Key panel says what it means, because
+// a colour nobody has been told about is decoration.
+const STATION_RING = '#1c1c1b'
+const STATION_RING_STEP_FREE = '#0019a8' // --color-tfl-blue
+
 // Thicker as you zoom in, so the network reads as a diagram from far out and
 // as individual track up close. The two ends are named separately because
 // line-offset has to shift by exactly one of these per line, and a zoom
@@ -357,8 +365,25 @@ function addLayers(m, { segments, stations, drawn }) {
     paint: {
       'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 1.6, 13, 4],
       'circle-color': STATION_FILL,
-      'circle-stroke-color': INK,
-      'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 9, 0.5, 13, 1.2],
+      'circle-stroke-color': [
+        'case',
+        ['get', 'stepFree'],
+        STATION_RING_STEP_FREE,
+        STATION_RING,
+      ],
+      // Slightly heavier on a step-free station, so the colour is not the
+      // only thing carrying the meaning. Colour alone fails for anyone who
+      // cannot distinguish blue from near-black, which is a poor property for
+      // the one marker that is about accessibility.
+      'circle-stroke-width': [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        9,
+        ['case', ['get', 'stepFree'], 0.9, 0.5],
+        13,
+        ['case', ['get', 'stepFree'], 2, 1.2],
+      ],
     },
   })
 
@@ -390,9 +415,36 @@ function addLayers(m, { segments, stations, drawn }) {
     },
   })
 
-  // Named whenever a route is showing, whatever the zoom. The rule below -
-  // labels only past zoom 12 - exists because 272 of them at once is a smear;
-  // a dozen on one journey is the thing you actually wanted to read.
+  // Every other station the journey passes through, once there is room. The
+  // decision points are named at any zoom by the layer below; these are the
+  // stops between them, and not naming them at all left a zoomed-in route as
+  // a line of unlabelled dots - you could see where to change and not where
+  // you were going through.
+  //
+  // Same minzoom as the network's own labels, for the same reason: at zone-1
+  // density every name at once is an unreadable smear.
+  m.addLayer({
+    id: 'route-station-labels-minor',
+    type: 'symbol',
+    source: 'route-stations',
+    filter: ['!', ['get', 'major']],
+    minzoom: 12,
+    layout: {
+      'text-field': ['get', 'name'],
+      'text-size': 11,
+      'text-offset': [0, 1.1],
+      'text-anchor': 'top',
+    },
+    paint: {
+      'text-color': INK,
+      'text-halo-color': PAPER,
+      'text-halo-width': 2,
+    },
+  })
+
+  // The ends of the journey and every change, named whatever the zoom. Added
+  // after the minor labels so MapLibre resolves collisions in their favour -
+  // where two names cannot both fit, the one you have to act on wins.
   m.addLayer({
     id: 'route-station-labels',
     type: 'symbol',

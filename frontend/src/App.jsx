@@ -14,12 +14,14 @@
  *     disconnected without anyone noticing.
  *
  * WHAT'S NEW
- *     Three cards in three corners, and which corner is not arbitrary. The
- *     planner is top left where reading starts. Line status is bottom right,
- *     because it is about the railway and you look at it when a route
- *     surprises you. API status is top right and deliberately the smallest
- *     thing on screen - it is diagnostics, and it used to sit bottom left
- *     where the planner panel grew over the top of it.
+ *     The planner top left, where reading starts. The map key and line
+ *     status bottom right, stacked in one column: reference material you
+ *     read once, kept away from the one panel that changes size.
+ *
+ *     Which corner is not arbitrary, and the empty one is the lesson. The
+ *     API status card used to sit bottom left, where the planner grew over
+ *     the top of it; the key went there next and the same thing happened to
+ *     it. Nothing goes under the planner.
  *
  *     TfL's palette, from their published standards. The line colours are
  *     NOT here: those come out of the database with the network, so a line
@@ -28,6 +30,7 @@
 
 import { useState } from 'react'
 import LineStatus from './components/LineStatus'
+import MapKey from './components/MapKey'
 import ObjectiveToggle, { OBJECTIVES } from './components/ObjectiveToggle'
 import RoutePanel from './components/RoutePanel'
 import StationSearch from './components/StationSearch'
@@ -67,7 +70,6 @@ export default function App() {
   // there is nothing to fetch alongside it - see hooks/useLiveStatus.js.
   const status = useLiveStatus()
 
-
   // fixed inset-0, not h-screen w-screen. 100vw INCLUDES the scrollbar on
   // Windows, so the moment anything makes one appear this element is wider
   // than the visible page and the bottom-right card sits past the right edge,
@@ -92,10 +94,10 @@ export default function App() {
           {/* The planner. Bordered rather than shadowed: TfL's own material
               is flat and high contrast, and a soft drop shadow over a pale
               map reads as a web dashboard rather than as signage. */}
-          {plannerHidden ? (
-            // Standing in for the whole panel, so the way back is where the
-            // thing that left used to be. A control that reappears somewhere
-            // else is a control people hunt for.
+          {/* Standing in for the whole panel, so the way back is where the
+              thing that left used to be. A control that reappears somewhere
+              else is a control people hunt for. */}
+          {plannerHidden && (
             <button
               type="button"
               onClick={() => setPlannerHidden(false)}
@@ -103,7 +105,16 @@ export default function App() {
             >
               Show planner
             </button>
-          ) : (
+          )}
+
+          {/* Hidden with CSS rather than unmounted. The search boxes hold
+              what you typed in their own state, so taking them out of the
+              tree throws it away: hiding the planner with two stations
+              chosen and showing it again left both boxes blank, while the
+              route below was still planned from stations the page no longer
+              displayed. display:none keeps them mounted and their state
+              intact. */}
+          <div className={plannerHidden ? 'hidden' : undefined}>
             <div className="border-tfl-ink/10 pointer-events-auto flex max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-sm flex-col overflow-hidden border bg-white shadow-xl">
               <header className="bg-tfl-blue flex items-start justify-between gap-3 px-4 py-3 text-white">
                 <div>
@@ -169,14 +180,29 @@ export default function App() {
                 )}
               </div>
             </div>
-          )}
-
+          </div>
         </div>
 
-        {/* Bottom right. About the railway rather than about this service,
-            which is why it does not share a corner with the one above. */}
-        <div className="absolute right-4 bottom-4">
-          <div className="border-tfl-ink/10 pointer-events-auto max-h-[calc(100vh-2rem)] max-w-xs overflow-y-auto border bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
+        {/* Bottom right, both of them, stacked in one column anchored to the
+            corner so they grow upwards as they expand.
+
+            The key started bottom left, which is empty and looked like the
+            obvious home for it. It is not: the planner above it has no fixed
+            height, and a long route pushes it down to within a few pixels of
+            the bottom of the window - so expanding the key covered the amber
+            disruption bar at the foot of the route. These two cannot collide
+            with each other, because sharing a column means the browser lays
+            them out rather than letting them overlap, and max-h with
+            overflow on each is what a short window does instead of clipping.
+
+            They also belong together. Both are read once and then ignored:
+            what the marks mean, and what the railway is doing. */}
+        <div className="absolute right-4 bottom-4 flex max-h-[calc(100vh-2rem)] flex-col items-end gap-3">
+          <div className="border-tfl-ink/10 pointer-events-auto max-w-xs min-h-0 overflow-y-auto border bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
+            <MapKey lines={network?.lines} />
+          </div>
+
+          <div className="border-tfl-ink/10 pointer-events-auto max-w-xs min-h-0 overflow-y-auto border bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
             <LineStatus status={status} lines={network?.lines} />
           </div>
         </div>

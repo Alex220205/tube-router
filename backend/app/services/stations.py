@@ -163,7 +163,30 @@ async def get_network(session: AsyncSession) -> dict:
         ids rather than nested stations, so the client joins them once instead
         of the payload repeating every station up to a dozen times.
     """
-    stations = await session.execute(_station_columns().order_by(Station.name))
+    # Step-free is per (station, line) in the database, because a platform is
+    # what is accessible or not - the Jubilee at Westminster is step-free and
+    # the District at the same station is not. The map draws one marker per
+    # station, so it needs the OR of those: "you can get to at least one
+    # platform here without stairs".
+    #
+    # A left join rather than a subquery in _station_columns, because the
+    # other two callers of that helper - the search box and the station
+    # detail page - do not want this and should not pay for it.
+    step_free = (
+        select(
+            StationLine.station_id,
+            func.bool_or(StationLine.step_free_to_platform).label("step_free"),
+        )
+        .group_by(StationLine.station_id)
+        .subquery()
+    )
+
+    stations = await session.execute(
+        _station_columns()
+        .add_columns(func.coalesce(step_free.c.step_free, False).label("step_free"))
+        .join(step_free, step_free.c.station_id == Station.id, isouter=True)
+        .order_by(Station.name)
+    )
     segments = await session.execute(
         select(
             Segment.line_id,

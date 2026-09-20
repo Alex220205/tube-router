@@ -22,9 +22,14 @@
  *     272 stations pushed the To box and everything under it off the bottom
  *     of the screen, so the second half of the form was unreachable without
  *     scrolling past a list nobody had asked for.
+ *
+ *     And it is usable without the mouse: down from the box into the list,
+ *     up and down through it, up again to come back out. Typing a station
+ *     name and then reaching for the trackpad to click the one result it
+ *     found is the sort of thing that makes a form feel unfinished.
  */
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { shortName } from '../lib/station-name'
 import { useStations } from '../hooks/useStations'
 
@@ -45,6 +50,11 @@ export default function StationSearch({ id, label, selected, onSelect }) {
   // going out of step is the whole class of bug this avoids.
   const chosen = Boolean(selected)
 
+  // Held to move focus between the box and the list, which is the one thing
+  // in here that cannot be expressed as rendered output.
+  const inputRef = useRef(null)
+  const listRef = useRef(null)
+
   // Nothing typed means nothing to choose between. The hook still runs, so
   // the results are already there the moment a character appears.
   const searching = query.trim().length > 0
@@ -61,6 +71,58 @@ export default function StationSearch({ id, label, selected, onSelect }) {
   function choose(station) {
     setQuery(shortName(station.name))
     onSelect(station)
+  }
+
+  // Moving through the list is moving focus, not tracking a highlighted index
+  // in state. The results are real buttons, so the browser's focus IS that
+  // state and nothing can disagree with it: Enter and Space already activate
+  // the focused one, it is already styled as focused, and it is scrolled into
+  // view inside the list's own overflow without anything here asking.
+  //
+  // The alternative - aria-activedescendant over a listbox - would mean the
+  // options stop being buttons, and then every behaviour above has to be
+  // rebuilt by hand.
+  function focusOption(index) {
+    const options = listRef.current?.querySelectorAll('button') ?? []
+    if (options.length === 0) return
+
+    // Clamped rather than wrapped. Holding down arrow should stop at the end
+    // of the list, not cycle past it with no way to tell you have.
+    options[Math.max(0, Math.min(index, options.length - 1))].focus()
+  }
+
+  function handleInputKeys(event) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      focusOption(0)
+      return
+    }
+
+    // Enter with exactly one result: there is nothing left to choose between,
+    // so typing enough to be unambiguous is the choice. With more than one it
+    // deliberately does nothing. Picking the first of fifty on a keypress the
+    // user meant as "done typing" is a decision made on their behalf, and the
+    // arrow key that makes it theirs is one key away.
+    if (event.key === 'Enter' && searching && !chosen && stations.length === 1) {
+      event.preventDefault()
+      choose(stations[0])
+    }
+  }
+
+  function handleOptionKeys(event, index) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      focusOption(index + 1)
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+
+      // Up from the top returns to the box rather than wrapping to the
+      // bottom, so the way out of the list is the way you came into it.
+      if (index === 0) inputRef.current?.focus()
+      else focusOption(index - 1)
+    } else if (event.key === 'Escape') {
+      inputRef.current?.focus()
+    }
   }
 
   return (
@@ -85,9 +147,11 @@ export default function StationSearch({ id, label, selected, onSelect }) {
         />
         <input
           id={id}
+          ref={inputRef}
           type="search"
           value={query}
           onChange={handleChange}
+          onKeyDown={handleInputKeys}
           placeholder="oxford, bank, king's cross…"
           className="border-tfl-line focus:border-tfl-blue focus:ring-tfl-blue/20 w-full border-2 bg-white py-2.5 pr-3 pl-4 text-sm focus:ring-4 focus:outline-none"
           autoComplete="off"
@@ -113,16 +177,20 @@ export default function StationSearch({ id, label, selected, onSelect }) {
       {/* Hidden once something is chosen: a list still offering alternatives
           under a filled-in box reads as though the choice did not take. */}
       {searching && !chosen && stations.length > 0 && (
-        <ul className="border-tfl-line divide-tfl-line mt-1.5 max-h-52 divide-y overflow-y-auto border-2 bg-white">
-          {stations.map((station) => (
+        <ul
+          ref={listRef}
+          className="border-tfl-line divide-tfl-line mt-1.5 max-h-52 divide-y overflow-y-auto border-2 bg-white"
+        >
+          {stations.map((station, index) => (
             <li key={station.id}>
-              {/* A button, not a clickable li. Tab reaches it, Enter and
-                  Space activate it, and screen readers announce it as
-                  something that does something - none of which is true of a
-                  list item with an onClick. */}
+              {/* A button, not a clickable li. Tab and the arrow keys reach
+                  it, Enter and Space activate it, and screen readers announce
+                  it as something that does something - none of which is true
+                  of a list item with an onClick. */}
               <button
                 type="button"
                 onClick={() => choose(station)}
+                onKeyDown={(event) => handleOptionKeys(event, index)}
                 className="hover:bg-tfl-blue focus:bg-tfl-blue w-full px-4 py-2.5 text-left text-sm hover:text-white focus:text-white focus:outline-none"
               >
                 {shortName(station.name)}

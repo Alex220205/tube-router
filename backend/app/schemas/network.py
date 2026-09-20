@@ -33,9 +33,31 @@ class NetworkSegment(BaseModel):
     seconds: int = Field(description="Ride time in seconds. Always > 0.")
 
 
+class NetworkStation(StationPublic):
+    """A station as the map needs it: position plus whether it is accessible.
+
+    Its own class rather than a field on StationPublic, because the search box
+    and the station detail page use that one and neither reads accessibility.
+    A field nobody reads is worse than its absence - see CODE_STYLE.md section
+    10 - and putting it here keeps the cost with the only caller that wants
+    it.
+    """
+
+    step_free: bool = Field(
+        description=(
+            "True when at least one platform here can be reached from the "
+            "street without stairs. The database records this per line, "
+            "because a platform is what is accessible - the Jubilee at "
+            "Westminster is step-free and the District is not - so this is "
+            "the OR across the lines that serve the station, which is the "
+            "question a map marker answers."
+        )
+    )
+
+
 class NetworkResponse(BaseModel):
     """Everything needed to draw the network."""
 
-    stations: list[StationPublic] = Field(description="Every station.")
+    stations: list[NetworkStation] = Field(description="Every station.")
     segments: list[NetworkSegment] = Field(description="Every directional hop.")
     lines: list[LinePublic] = Field(description="Every line, with colours.")
