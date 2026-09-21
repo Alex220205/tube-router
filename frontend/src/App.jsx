@@ -51,7 +51,12 @@ export default function App() {
   // is never told anything changed. Hiding a panel that was only ever on top
   // is the cheapest possible version of this.
   const [plannerHidden, setPlannerHidden] = useState(false)
-  const { network, loading: networkLoading, error: networkError } = useNetwork()
+  const {
+    network,
+    loading: networkLoading,
+    error: networkError,
+    retry: retryNetwork,
+  } = useNetwork()
 
   // The question being asked. Held here because both ends of a journey have
   // to be known in one place to ask for a route, and neither search box has
@@ -177,10 +182,24 @@ export default function App() {
                 {networkLoading && (
                   <p className="text-tfl-grey mt-3 text-sm">Loading the network…</p>
                 )}
+                {/* Only after the retries in useNetwork have all failed, so
+                    this means "it is really not there" rather than "the
+                    container is still starting". Offering the button is the
+                    point: without one the only way back is a page reload,
+                    which is a thing a user has to think of. */}
                 {networkError && (
-                  <p className="text-tfl-red mt-3 text-sm font-medium">
-                    Could not load the network: {networkError}
-                  </p>
+                  <div className="border-tfl-red bg-tfl-red/5 mt-3 border-l-4 px-3 py-2">
+                    <p className="text-tfl-red text-sm font-medium">
+                      Could not load the network: {networkError}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={retryNetwork}
+                      className="border-tfl-red text-tfl-red hover:bg-tfl-red mt-2 border px-3 py-1 text-xs font-medium hover:text-white"
+                    >
+                      Try again
+                    </button>
+                  </div>
                 )}
 
                 {/* A map that fails silently is a white rectangle nobody can
