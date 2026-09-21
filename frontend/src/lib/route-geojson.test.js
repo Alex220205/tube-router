@@ -21,9 +21,28 @@ import { toRouteGeoJson } from './route-geojson'
 // is needed.
 const network = {
   stations: [
-    { id: 1, naptan_id: '940GZZLUOXC', name: 'Oxford Circus', lat: 51.515224, lon: -0.141903 },
-    { id: 2, naptan_id: '940GZZLUGPK', name: 'Green Park', lat: 51.506947, lon: -0.142787 },
-    { id: 3, naptan_id: '940GZZLUWSM', name: 'Westminster', lat: 51.501402, lon: -0.124971 },
+    {
+      id: 1,
+      naptan_id: '940GZZLUOXC',
+      name: 'Oxford Circus',
+      lat: 51.515224,
+      lon: -0.141903,
+    },
+    {
+      id: 2,
+      naptan_id: '940GZZLUGPK',
+      name: 'Green Park',
+      lat: 51.506947,
+      lon: -0.142787,
+      step_free: true,
+    },
+    {
+      id: 3,
+      naptan_id: '940GZZLUWSM',
+      name: 'Westminster',
+      lat: 51.501402,
+      lon: -0.124971,
+    },
   ],
   segments: [],
   lines: [
@@ -66,6 +85,29 @@ describe('toRouteGeoJson', () => {
       [-0.141903, 51.515224],
       [-0.142787, 51.506947],
     ])
+  })
+
+  it('keeps the step-free marking on the stations it draws', () => {
+    // The route's own stations are drawn on top of the network's, so a
+    // transform that forgets step_free does not make the ring wrong - it
+    // makes it vanish, and only once a route is planned. That is the one
+    // moment somebody is checking whether they can get out at the other end.
+    //
+    // It shipped that way and was reported from a screenshot. Nothing raised,
+    // every other assertion here passed, and the map looked entirely normal.
+    const { stations } = toRouteGeoJson(route, network)
+
+    const byName = new Map(
+      stations.features.map((f) => [f.properties.name, f.properties.stepFree]),
+    )
+
+    expect(byName.get('Green Park')).toBe(true)
+    expect(byName.get('Oxford Circus')).toBe(false)
+
+    // Never undefined: MapLibre's `case` on a missing property takes the
+    // fallback silently, so an absent flag and a false one would look the
+    // same on the map and different in a test.
+    for (const value of byName.values()) expect(typeof value).toBe('boolean')
   })
 
   it('draws a change as two legs, each in its own line colour', () => {

@@ -73,10 +73,21 @@ export default function App() {
   // fixed inset-0, not h-screen w-screen. 100vw INCLUDES the scrollbar on
   // Windows, so the moment anything makes one appear this element is wider
   // than the visible page and the bottom-right card sits past the right edge,
-  // clipped by overflow-hidden. inset-0 on a fixed element is exactly the
-  // viewport, with no such arithmetic.
+  // clipped away. inset-0 on a fixed element is exactly the viewport, with no
+  // such arithmetic.
+  //
+  // overflow-CLIP, not overflow-hidden, and the difference is not cosmetic.
+  // `hidden` still creates a scroll container: it stops the *user* scrolling,
+  // and scripts and the browser itself scroll it freely. So focusing anything
+  // inside - a chip's sr-only radio, say - let the browser scroll this shell
+  // 108px to bring it into view, taking the whole planner off the top of a
+  // laptop screen with no way to bring it back, because the wheel does
+  // nothing on an overflow-hidden element.
+  //
+  // `clip` creates no scroll container at all. Nothing can scroll it: not
+  // focus, not scrollIntoView, not anything added later. See ISSUES.md #27.
   return (
-    <main className="bg-tfl-paper text-tfl-ink fixed inset-0 overflow-hidden font-sans">
+    <main className="bg-tfl-paper text-tfl-ink fixed inset-0 overflow-clip font-sans">
       <TubeMap network={network} route={route} onError={setMapError} />
 
       {/* Everything below floats over the map. pointer-events-none on the
