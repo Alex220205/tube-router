@@ -94,6 +94,12 @@ export function toRouteGeoJson(route, network) {
           // Sticky across legs - a change is the end of one leg and the start
           // of the next, and it must stay major when the second one sets it.
           major: stops.get(stop.id)?.properties.major || isEnd,
+          // Carried through from the network, because the route's own
+          // stations are drawn on top of it. Without this the blue ring
+          // disappears from every station on a journey the moment one is
+          // planned - which is the one time somebody is looking to see
+          // whether they can get out at the other end.
+          stepFree: Boolean(station.step_free),
         },
         geometry: { type: 'Point', coordinates: [station.lon, station.lat] },
       })

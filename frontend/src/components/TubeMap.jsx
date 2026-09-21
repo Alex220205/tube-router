@@ -256,11 +256,7 @@ export default function TubeMap({ network, route, onError }) {
     // The network's own labels go away while a route is up, so the only names
     // on screen are the ones on the journey. Two sets of labels fighting for
     // the same space is how a route ends up with its interchange unlabelled.
-    m.setLayoutProperty(
-      'station-labels',
-      'visibility',
-      hasRoute ? 'none' : 'visible',
-    )
+    m.setLayoutProperty('station-labels', 'visibility', hasRoute ? 'none' : 'visible')
 
     // The camera deliberately does not move. Fitting the view to the route is
     // the obvious touch, and it fights someone who has just panned somewhere
@@ -410,8 +406,20 @@ function addLayers(m, { segments, stations, drawn }) {
         ['case', ['get', 'major'], 8, 5],
       ],
       'circle-color': STATION_FILL,
-      'circle-stroke-color': INK,
-      'circle-stroke-width': ['case', ['get', 'major'], 2.5, 1.5],
+      // Step-free stays step-free while a route is drawn. This layer sits on
+      // top of the network's own stations, so painting every ring ink here
+      // silently undid the accessibility marking for exactly the journey
+      // somebody had just asked about.
+      'circle-stroke-color': ['case', ['get', 'stepFree'], STATION_RING_STEP_FREE, INK],
+      // Heavier again on step-free, so the colour is not the only signal -
+      // the same pairing the network layer uses, scaled up because these
+      // circles are bigger.
+      'circle-stroke-width': [
+        'case',
+        ['get', 'stepFree'],
+        ['case', ['get', 'major'], 3.5, 2.5],
+        ['case', ['get', 'major'], 2.5, 1.5],
+      ],
     },
   })
 

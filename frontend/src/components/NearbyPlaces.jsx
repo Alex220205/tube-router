@@ -94,10 +94,33 @@ export default function NearbyPlaces({ destination }) {
 
   // This section is the last thing in a panel that scrolls, so opening it
   // adds content below the fold and the click appears to do nothing at all.
-  // `nearest` scrolls the minimum needed and leaves the view alone when it
-  // was already visible, so it never yanks the panel around for no reason.
+  //
+  // scrollIntoView CANNOT be used for this, which the first version learned
+  // the expensive way. It scrolls every scrollable ancestor, and `overflow:
+  // hidden` does not make an element unscrollable - it only stops the *user*
+  // scrolling it. So opening this section scrolled the page shell as well as
+  // the panel, pushed the whole card 108px off the top of a laptop screen,
+  // and left no way to bring it back: the shell ignores the wheel, because
+  // it is overflow-hidden.
+  //
+  // So the panel's own scroller is found and adjusted by hand. Nothing else
+  // moves, by construction rather than by asking politely with `nearest`.
   useEffect(() => {
-    if (open) container.current?.scrollIntoView({ block: 'nearest' })
+    if (!open) return
+
+    const element = container.current
+    const scroller = element?.closest('.overflow-y-auto')
+    if (!element || !scroller) return
+
+    const box = element.getBoundingClientRect()
+    const frame = scroller.getBoundingClientRect()
+
+    // Only when it is actually out of view, and only by as much as it takes.
+    if (box.bottom > frame.bottom) {
+      scroller.scrollTop += box.bottom - frame.bottom
+    } else if (box.top < frame.top) {
+      scroller.scrollTop -= frame.top - box.top
+    }
   }, [open])
 
   // No legs means no destination. Oxford Circus to Oxford Circus is a valid
