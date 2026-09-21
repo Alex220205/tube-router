@@ -77,6 +77,22 @@ class Place(BaseModel):
             "says nothing at all for null."
         ),
     )
+    website: str | None = Field(
+        default=None,
+        description=(
+            "The place's own site. Null when it has none, which is common - "
+            "a market stall or a park has no website and is not diminished "
+            "by that."
+        ),
+    )
+    maps_url: str | None = Field(
+        default=None,
+        description=(
+            "The place's page on Google Maps. Effectively always present, "
+            "which is why it is carried alongside `website` rather than "
+            "instead of it: together they are a link on every row."
+        ),
+    )
 
 
 class PlacesResponse(BaseModel):
