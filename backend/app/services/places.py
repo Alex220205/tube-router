@@ -74,6 +74,15 @@ FIELD_MASK = ",".join(
         "places.rating",
         "places.userRatingCount",
         "places.location",
+        # Free, in the only sense that matters. Google bills Nearby Search by
+        # the most expensive tier any requested field belongs to;
+        # accessibilityOptions is Pro, and rating and userRatingCount above
+        # are already Enterprise. Adding it changes the bill by nothing.
+        #
+        # Checked against Google's field mask tables rather than assumed. The
+        # first plan for this had it on Place Details, which would have been a
+        # second billed call for every place in the list.
+        "places.accessibilityOptions",
     )
 )
 
@@ -114,6 +123,37 @@ class PlacesError(RuntimeError):
     """Google could not be reached, or answered with something unusable."""
 
 
+# Where "here" is. Google will happily resolve a London place name to
+# another continent - "Victoria" is a state in Australia, "Richmond" is in
+# Virginia - and the result is a route planned from a real station to a real
+# coordinate five thousand miles away, with nothing raising anywhere.
+#
+# Two guards, because either alone leaks. `components=country:GB` rules out
+# the continents; the viewport biases within Britain toward the city this
+# application is about. Roughly Greater London, south-west corner to
+# north-east.
+UK_ONLY = "country:GB"
+LONDON_BOUNDS = "51.28,-0.51|51.70,0.33"
+
+
+@dataclass(frozen=True)
+class GeocodedPlace:
+    """A place name resolved to a point on the ground.
+
+    Attributes:
+        address: Google's formatted address, which is what a user recognises.
+            "British Museum" comes back as "Great Russell St, London WC1B
+            3DG, UK", and that is the string to show when asking which of
+            several matches they meant.
+        latitude: WGS84.
+        longitude: WGS84.
+    """
+
+    address: str
+    latitude: float
+    longitude: float
+
+
 @dataclass(frozen=True)
 class Place:
     """One nearby place, flattened out of Google's nested response.
@@ -131,6 +171,10 @@ class Place:
     rating: float | None
     ratings: int | None
     metres: int | None
+    # True only when Google says so. None means nobody has recorded it, which
+    # is NOT the same as "no" and must never be rendered as one - see the
+    # schema for why that distinction is load bearing.
+    wheelchair_entrance: bool | None
 
 
 class GoogleMapsClient:
@@ -141,6 +185,7 @@ class GoogleMapsClient:
         *,
         places_base_url: str = "https://places.googleapis.com",
         street_view_base_url: str = "https://maps.googleapis.com",
+        geocoding_base_url: str = "https://maps.googleapis.com",
         api_key: str = "",
         timeout_seconds: float = 5.0,
         max_attempts: int = 3,
@@ -152,6 +197,9 @@ class GoogleMapsClient:
             places_base_url: Root of the Places API (New).
             street_view_base_url: Root of the Street View Static API. Google
                 splits these across two hosts.
+            geocoding_base_url: Root of the Geocoding API. Same host as
+                Street View today, and named separately because Google has
+                moved one of these once already.
             api_key: Blank means the feature is off. Nothing is requested and
                 every method returns an empty answer, which is what
                 `configured` exists to let callers report honestly.
@@ -161,6 +209,7 @@ class GoogleMapsClient:
         """
         self._places_base_url = places_base_url.rstrip("/")
         self._street_view_base_url = street_view_base_url.rstrip("/")
+        self._geocoding_base_url = geocoding_base_url.rstrip("/")
         self._api_key = api_key
         self._max_attempts = max_attempts
         self._client = httpx.AsyncClient(
@@ -323,6 +372,73 @@ class GoogleMapsClient:
             _place(entry, latitude, longitude) for entry in payload.get("places", [])
         ]
 
+    async def geocode(self, query: str, *, limit: int = 5) -> list[GeocodedPlace]:
+        """Turn typed text into points on the ground.
+
+        Args:
+            query: Whatever someone typed. "British Museum", a postcode, an
+                address.
+            limit: How many matches to keep.
+
+        Returns:
+            Matches, most confident first, biased to London. Empty when
+            Google recognised nothing and when there is no key.
+
+        Raises:
+            PlacesError: If Google could not be reached.
+
+        EVERY match is returned, not the best one. "High Street" resolves to
+        seven different places in Britain and picking the first silently is
+        the failure this project has avoided since Phase 3: an answer that
+        looks right, is wrong, and gives nobody a way to tell. The caller
+        shows them and lets a person choose.
+        """
+        if not self.configured:
+            return []
+
+        response = await self._send(
+            self._client.build_request(
+                "GET",
+                f"{self._geocoding_base_url}/maps/api/geocode/json",
+                params={
+                    "address": query,
+                    "components": UK_ONLY,
+                    "bounds": LONDON_BOUNDS,
+                    "key": self._api_key,
+                },
+            )
+        )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise PlacesError("geocode returned a body that is not JSON") from exc
+
+        # Geocoding answers 200 with a status field rather than an HTTP error,
+        # so _send cannot have caught this. ZERO_RESULTS is an ordinary
+        # answer - the text matched nothing - and anything else is a problem
+        # worth raising so the route can log it.
+        status = payload.get("status")
+        if status == "ZERO_RESULTS":
+            return []
+        if status != "OK":
+            raise PlacesError(
+                f"geocode returned {status}: {payload.get('error_message', '')}"
+            )
+
+        found = []
+        for entry in payload.get("results", [])[:limit]:
+            location = (entry.get("geometry") or {}).get("location") or {}
+            if location.get("lat") is None or location.get("lng") is None:
+                continue
+            found.append(
+                GeocodedPlace(
+                    address=entry.get("formatted_address", query),
+                    latitude=location["lat"],
+                    longitude=location["lng"],
+                )
+            )
+        return found
+
     async def street_view(
         self, *, latitude: float, longitude: float, size: str = "400x200"
     ) -> bytes | None:
@@ -395,11 +511,18 @@ def _place(entry: dict[str, Any], from_lat: float, from_lon: float) -> Place:
     location = entry.get("location") or {}
     lat, lon = location.get("latitude"), location.get("longitude")
 
+    # .get() twice rather than a default dict, because Google omits
+    # accessibilityOptions entirely for a place nobody has recorded anything
+    # about - which is most of them - and omits individual keys within it for
+    # the rest.
+    access = entry.get("accessibilityOptions") or {}
+
     return Place(
         name=(entry.get("displayName") or {}).get("text", ""),
         address=entry.get("formattedAddress"),
         rating=entry.get("rating"),
         ratings=entry.get("userRatingCount"),
+        wheelchair_entrance=access.get("wheelchairAccessibleEntrance"),
         metres=(
             None
             if lat is None or lon is None

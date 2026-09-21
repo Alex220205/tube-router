@@ -30,7 +30,7 @@ WHAT'S NEW
     that conversion is in exactly one place rather than at each call site.
 """
 
-from geoalchemy2 import Geometry
+from geoalchemy2 import Geography, Geometry
 from sqlalchemy import Select, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -162,6 +162,48 @@ async def coordinates_for_naptan(session: AsyncSession, naptan_id: str) -> dict 
     )
     row = result.mappings().first()
     return dict(row) if row else None
+
+
+async def nearest_to(
+    session: AsyncSession, latitude: float, longitude: float, limit: int = 3
+) -> list[dict]:
+    """The stations closest to a point on the ground.
+
+    Args:
+        session: Database session.
+        latitude: WGS84.
+        longitude: WGS84.
+        limit: How many to return.
+
+    Returns:
+        Dicts of `naptan_id`, `name` and `metres`, nearest first.
+
+    `<->` is the KNN operator and it is what makes this "nearest" rather than
+    "sorted by a distance somebody calculated". At 272 rows the GIST index
+    Phase 1 built for this saves no measurable time - a sequential scan would
+    be instant - but the operator is the one that expresses the question, and
+    the alternative is pulling every station into Python to sort it.
+
+    ST_MakePoint takes longitude FIRST. Reversed, every answer is a station
+    in the Indian Ocean, sorted correctly.
+    """
+    point = cast(
+        func.ST_SetSRID(func.ST_MakePoint(longitude, latitude), 4326), Geography
+    )
+
+    result = await session.execute(
+        select(
+            Station.naptan_id,
+            Station.name,
+            func.ST_Distance(Station.location, point).label("metres"),
+        )
+        .order_by(Station.location.op("<->")(point))
+        .limit(limit)
+    )
+    return [
+        {"naptan_id": row.naptan_id, "name": row.name, "metres": round(row.metres)}
+        for row in result
+    ]
 
 
 async def list_lines(session: AsyncSession) -> list[dict]:

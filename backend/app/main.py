@@ -46,6 +46,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .core.cache import close as close_cache
 from .core.config import get_settings
 from .core.database import dispose_engine
+from .routes.geocode import router as geocode_route
 from .routes.health import router as health_route
 from .routes.lines import router as lines_route
 from .routes.network import router as network_route
@@ -114,6 +115,7 @@ app.include_router(lines_route)
 app.include_router(network_route)
 app.include_router(route_route)
 app.include_router(places_route)
+app.include_router(geocode_route)
 app.include_router(status_route)
 app.include_router(ws_route)
 

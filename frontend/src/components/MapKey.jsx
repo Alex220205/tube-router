@@ -76,7 +76,8 @@ export default function MapKey({ lines }) {
           <Row swatch={<Dot ring={INK} />}>Station</Row>
 
           <Row swatch={<Dot ring={STEP_FREE} thick />}>
-            Step-free access from street to platform
+            Step-free: from street to platform at a station, and a wheelchair accessible
+            entrance on a place near your destination
           </Row>
 
           <Row swatch={<Dot ring={INK} big />}>

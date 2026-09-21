@@ -117,6 +117,10 @@ class Settings(BaseSettings):
     # maps.googleapis.com.
     google_places_base_url: str = "https://places.googleapis.com"
     google_street_view_base_url: str = "https://maps.googleapis.com"
+    # Same host as Street View today. Named separately because Google has
+    # already moved one of these once, and a shared setting would mean
+    # moving both to follow either.
+    google_geocoding_base_url: str = "https://maps.googleapis.com"
 
     # Blank disables the feature completely: no request is made, the endpoint
     # answers `available: false`, and the page renders nothing. The project

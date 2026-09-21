@@ -165,6 +165,20 @@ export function fetchPlaces(naptanId, kind, signal) {
 }
 
 /**
+ * Resolve typed text to places, each with the stations nearest to it.
+ *
+ * @param {string} query "British Museum", an address, a postcode.
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{available: boolean, results: Array}>} `available` is
+ *   false when the server has no Google key or could not reach Google. An
+ *   empty `results` with `available` true means nothing near the Underground
+ *   matched, which is a real answer.
+ */
+export function geocodePlace(query, signal) {
+  return request('GET', `/geocode?q=${encodeURIComponent(query)}`, { signal })
+}
+
+/**
  * Where to find a photograph of a station's exit.
  *
  * Builds a string and fetches nothing: it is an `<img src>`, so the browser
