@@ -45,6 +45,7 @@ WHAT'S NEW
 """
 
 import base64
+import logging
 
 from fastapi import APIRouter, HTTPException, Query, Response
 from sqlalchemy.exc import OperationalError
@@ -58,6 +59,20 @@ from app.services import stations as station_service
 from app.services.places import KINDS, GoogleMapsClient, PlacesError
 
 router = APIRouter(prefix="/places", tags=["places"])
+
+# The only logger in the backend, and it earns its place.
+#
+# Everything else here either answers or raises, so a failure is visible.
+# This module is the exception: when Google refuses, the endpoint returns
+# `available: false` and the page quietly shows one line - which is right for
+# the reader and leaves the operator with no way to tell "no key" from "bad
+# key" from "Google is down". All three look identical from outside.
+#
+# That is not the same trade core/cache.py makes. A swallowed Redis error
+# still produces the correct answer from the source, so there is nothing to
+# investigate. A swallowed 401 means a feature is off and nobody can say why,
+# which cost two rounds of diagnosis to establish by hand.
+logger = logging.getLogger(__name__)
 
 # Versioned, as every cache key in this project is. A change to the field
 # mask or to Place changes the shape of what is stored, and a v1 reader
@@ -135,9 +150,12 @@ async def places_near(
                     radius_metres=settings.google_places_radius_metres,
                     max_results=settings.google_places_max_results,
                 )
-            except PlacesError:
+            except PlacesError as exc:
                 # Google being down is not this service being down. The route
-                # is already on the page; this is an extra that goes quiet.
+                # is already on the page; this is an extra that goes quiet -
+                # quiet on the page, and loud in the log, because the two
+                # audiences need opposite things here.
+                logger.warning("places lookup failed for %s: %s", naptan_id, exc)
                 return empty
 
         answer = PlacesResponse(
@@ -222,6 +240,7 @@ async def street_view(
                     latitude=station["lat"], longitude=station["lon"]
                 )
             except PlacesError as exc:
+                logger.warning("street view failed for %s: %s", naptan_id, exc)
                 raise HTTPException(
                     status_code=404, detail="Street view unavailable"
                 ) from exc
