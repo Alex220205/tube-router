@@ -100,7 +100,8 @@ async def test_the_key_is_sent_as_a_header_and_never_in_the_url() -> None:
     # schemas/places.Place and a reader on the page.
     assert request.headers["X-Goog-FieldMask"] == (
         "places.displayName,places.formattedAddress,places.rating,"
-        "places.userRatingCount,places.location,places.accessibilityOptions"
+        "places.userRatingCount,places.location,places.accessibilityOptions,"
+        "places.websiteUri,places.googleMapsUri"
     )
 
 

@@ -83,6 +83,17 @@ FIELD_MASK = ",".join(
         # first plan for this had it on Place Details, which would have been a
         # second billed call for every place in the list.
         "places.accessibilityOptions",
+        # Somewhere to send people. websiteUri is the place's own site and is
+        # Enterprise; googleMapsUri is its page on Google Maps and is Pro.
+        # Both are free here for the same reason accessibilityOptions is: the
+        # mask already triggers Enterprise through rating.
+        #
+        # Both, not one. websiteUri is the better destination and is absent
+        # for plenty of places - a market stall has no website - while
+        # googleMapsUri is always present, so together they are a link on
+        # every row rather than on most of them.
+        "places.websiteUri",
+        "places.googleMapsUri",
     )
 )
 
@@ -175,6 +186,8 @@ class Place:
     # is NOT the same as "no" and must never be rendered as one - see the
     # schema for why that distinction is load bearing.
     wheelchair_entrance: bool | None
+    website: str | None
+    maps_url: str | None
 
 
 class GoogleMapsClient:
@@ -523,12 +536,34 @@ def _place(entry: dict[str, Any], from_lat: float, from_lon: float) -> Place:
         rating=entry.get("rating"),
         ratings=entry.get("userRatingCount"),
         wheelchair_entrance=access.get("wheelchairAccessibleEntrance"),
+        website=_safe_url(entry.get("websiteUri")),
+        maps_url=_safe_url(entry.get("googleMapsUri")),
         metres=(
             None
             if lat is None or lon is None
             else _metres_between(from_lat, from_lon, lat, lon)
         ),
     )
+
+
+def _safe_url(value: Any) -> str | None:
+    """A URL only if it is one we are willing to put in an href.
+
+    Args:
+        value: Whatever Google sent, which is a string in practice.
+
+    Returns:
+        The URL, or None.
+
+    https only, and rejected rather than coerced. These strings come from a
+    third party and end up in an anchor's href, which is the one place a
+    `javascript:` URL becomes code running on our origin. Google does not
+    send one; the guard is here because "the API would never" is the sentence
+    that precedes every injection, and the check costs one comparison.
+    """
+    if isinstance(value, str) and value.startswith("https://"):
+        return value
+    return None
 
 
 # Mean Earth radius. Good to about 0.5% at these distances, which is well

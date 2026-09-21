@@ -49,6 +49,30 @@ import { STEP_FREE } from './MapKey'
 import { usePlaces } from '../hooks/usePlaces'
 import { shortName } from '../lib/station-name'
 
+/**
+ * Where a recommendation should send somebody.
+ *
+ * Its own site first, because that is where the opening hours and the menu
+ * are. Google Maps second, because it is effectively always there, and a row
+ * that cannot be followed up is a row that stops halfway.
+ *
+ * Both arrive already filtered to https by the API, so nothing here has to
+ * reason about what a third party put in a string.
+ *
+ * Named linkFor rather than destination, because this component already
+ * takes a prop called destination - the station at the end of the journey -
+ * and a module function of the same name is shadowed by it inside the
+ * component. The call then quietly invokes a station object. eslint caught
+ * it as an unused function, which is the same defect wearing the only
+ * symptom it has.
+ *
+ * @param {object} place
+ * @returns {string | null}
+ */
+function linkFor(place) {
+  return place.website ?? place.maps_url ?? null
+}
+
 // One array, the way OBJECTIVES works in ObjectiveToggle.jsx, so a sixth
 // category is a data change rather than a code change.
 //
@@ -262,7 +286,24 @@ export default function NearbyPlaces({ destination }) {
                         }}
                       />
                     )}
-                    {place.name}
+                    {/* A link when there is somewhere to go, plain text
+                        when there is not, rather than a dead link that looks
+                        live. noreferrer as well as noopener: the first stops
+                        the opened page reaching back through window.opener,
+                        the second stops it being told where its visitor came
+                        from. */}
+                    {linkFor(place) ? (
+                      <a
+                        href={linkFor(place)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:text-tfl-blue underline decoration-transparent underline-offset-2 hover:decoration-current"
+                      >
+                        {place.name}
+                      </a>
+                    ) : (
+                      place.name
+                    )}
                   </p>
                   {place.address && (
                     <p className="text-tfl-grey text-xs">{place.address}</p>
@@ -290,7 +331,8 @@ export default function NearbyPlaces({ destination }) {
 
           {!unavailable && places.length > 0 && (
             <p className="text-tfl-grey mt-2 text-[11px]">
-              Nearest first, within 1.5km. Distances are straight line. From Google.
+              Nearest first, within 1.5km. Distances are straight line. Names link out.
+              From Google.
             </p>
           )}
         </div>
