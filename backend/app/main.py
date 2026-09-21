@@ -49,6 +49,7 @@ from .core.database import dispose_engine
 from .routes.health import router as health_route
 from .routes.lines import router as lines_route
 from .routes.network import router as network_route
+from .routes.places import router as places_route
 from .routes.route import router as route_route
 from .routes.stations import router as stations_route
 from .routes.status import router as status_route
@@ -112,6 +113,7 @@ app.include_router(stations_route)
 app.include_router(lines_route)
 app.include_router(network_route)
 app.include_router(route_route)
+app.include_router(places_route)
 app.include_router(status_route)
 app.include_router(ws_route)
 

@@ -146,6 +146,40 @@ export function planRoute(query, signal) {
 }
 
 /**
+ * What is near a station.
+ *
+ * @param {string} naptanId TfL's station id, e.g. 940GZZLUHR5.
+ * @param {string} kind One of the categories the backend allows. It keeps
+ *   the authoritative list and answers 400 for anything else - a client is
+ *   not a place to enforce what reaches a paid API.
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{available: boolean, places: Array}>} `available` is
+ *   false when the server has no Google key or could not reach Google. The
+ *   empty list then means "we did not look", not "there is nothing there",
+ *   and the page renders nothing at all rather than an error.
+ */
+export function fetchPlaces(naptanId, kind, signal) {
+  return request('GET', `/places/${encodeURIComponent(naptanId)}?kind=${kind}`, {
+    signal,
+  })
+}
+
+/**
+ * Where to find a photograph of a station's exit.
+ *
+ * Builds a string and fetches nothing: it is an `<img src>`, so the browser
+ * does the request. Pointed at our own API rather than at Google, because
+ * the key stays on the server - a signed Google URL in the page is a key in
+ * the page.
+ *
+ * @param {string} naptanId
+ * @returns {string}
+ */
+export function streetViewUrl(naptanId) {
+  return `${BASE_URL}/places/${encodeURIComponent(naptanId)}/streetview`
+}
+
+/**
  * Subscribe to live line status.
  *
  * The socket sends the current picture on connect, before any change - so

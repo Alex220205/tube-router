@@ -135,6 +135,35 @@ async def get_station(session: AsyncSession, station_id: int) -> dict | None:
     return station
 
 
+async def coordinates_for_naptan(session: AsyncSession, naptan_id: str) -> dict | None:
+    """Where a station is, looked up by its TfL id.
+
+    Args:
+        session: Database session.
+        naptan_id: TfL's own station id, e.g. 940GZZLUHR5.
+
+    Returns:
+        A dict with `naptan_id`, `name`, `lat` and `lon`, or None if no such
+        station exists. None rather than raising, as with get_station: the
+        handler decides what a missing station means in HTTP terms.
+
+    A dict rather than a (lat, lon) tuple on purpose. The one thing that goes
+    wrong with coordinates in this codebase is the order, which is why
+    _station_columns exists at all, and a tuple is two unlabelled floats that
+    can be unpacked backwards without anything raising.
+    """
+    result = await session.execute(
+        select(
+            Station.naptan_id,
+            Station.name,
+            func.ST_Y(cast(Station.location, Geometry)).label("lat"),
+            func.ST_X(cast(Station.location, Geometry)).label("lon"),
+        ).where(Station.naptan_id == naptan_id)
+    )
+    row = result.mappings().first()
+    return dict(row) if row else None
+
+
 async def list_lines(session: AsyncSession) -> list[dict]:
     """Every line, ordered by name.
 

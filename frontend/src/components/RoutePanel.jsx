@@ -36,6 +36,7 @@
 
 import { useState } from 'react'
 import { INK, STEP_FREE } from './MapKey'
+import NearbyPlaces from './NearbyPlaces'
 import { shortName } from '../lib/station-name'
 
 // One sentence per reason the engine can give. Written for a traveller, not
@@ -232,6 +233,11 @@ export default function RoutePanel({
       </ol>
 
       <Disruption route={route} lines={lines} />
+
+      {/* The far end of the journey. Last station of the last leg, or null
+          when there are no legs at all - Oxford Circus to Oxford Circus is a
+          valid answer with an empty leg list. */}
+      <NearbyPlaces destination={route.legs.at(-1)?.stations.at(-1) ?? null} />
     </div>
   )
 }
