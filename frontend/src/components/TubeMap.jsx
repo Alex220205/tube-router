@@ -461,9 +461,30 @@ function addLayers(m, { segments, stations, drawn }) {
     layout: {
       'text-field': ['get', 'name'],
       'text-size': 12,
-      'text-offset': [0, 1.2],
-      'text-anchor': 'top',
-      'text-allow-overlap': false,
+      // Variable anchors, not a fixed one below the dot. MapLibre tries each
+      // in order and only gives up when none of them fit.
+      //
+      // With a single anchor it gave up often, and silently. Heathrow
+      // Terminal 5 to Oxford Circus changes at Green Park, and those two
+      // are a kilometre apart: zoomed out far enough to see the whole
+      // journey, the Oxford Circus label collided with the Green Park one
+      // and MapLibre dropped it. The destination of the journey had no name
+      // on it, while a station in the middle did.
+      //
+      // radial-offset rather than text-offset, because the offset has to
+      // follow whichever anchor was chosen.
+      'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
+      'text-radial-offset': 0.9,
+      'text-justify': 'auto',
+      // Tighter than the default of 2, so two labels can sit closer before
+      // either has to move. Every pixel here is a collision that does not
+      // happen.
+      'text-padding': 1,
+      // The ends of the journey are placed before the changes in the middle,
+      // so when something genuinely cannot fit, the thing that goes is a
+      // station you pass through rather than the one you are going to.
+      // Lower sorts first.
+      'symbol-sort-key': ['case', ['get', 'terminus'], 0, 1],
     },
     paint: {
       'text-color': INK,

@@ -110,6 +110,27 @@ describe('toRouteGeoJson', () => {
     for (const value of byName.values()) expect(typeof value).toBe('boolean')
   })
 
+  it('marks only where you get on and off as the ends of the journey', () => {
+    // The map places these labels first when two cannot both fit, so the
+    // name that survives a collision is your destination rather than a
+    // station you change at. Zoomed out on Heathrow Terminal 5 to Oxford
+    // Circus, Oxford Circus used to lose its label to Green Park a kilometre
+    // away, and the journey's destination had no name on it.
+    //
+    // A change is the end of one leg and the start of the next, so the
+    // per-leg `major` flag is true for it too. Marking changes as termini
+    // would put them in the same priority as the ends and bring the bug
+    // straight back, with every assertion about `major` still passing.
+    const { stations } = toRouteGeoJson(route, network)
+    const terminus = new Map(
+      stations.features.map((f) => [f.properties.name, f.properties.terminus]),
+    )
+
+    expect(terminus.get('Oxford Circus')).toBe(true)
+    expect(terminus.get('Westminster')).toBe(true)
+    expect(terminus.get('Green Park')).toBe(false)
+  })
+
   it('draws a change as two legs, each in its own line colour', () => {
     // Merging the legs into one LineString is the tempting simplification.
     // It draws the whole journey in a single colour, which hides the change -
