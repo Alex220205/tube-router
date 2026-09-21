@@ -212,11 +212,14 @@ export default function StationSearch({ id, label, selected, onSelect }) {
           rendering an empty box the user has to interpret - and it is also
           the moment to offer the thing that does work, because somebody
           typing text that is not a station name has usually typed a place. */}
-      {searching && !loading && !error && !chosen && stations.length === 0 && (
-        <div className="mt-2">
-          <p className="text-tfl-grey text-sm">No stations match “{query}”.</p>
-
-          {!places.query && (
+      {searching &&
+        !loading &&
+        !error &&
+        !chosen &&
+        !places.query &&
+        stations.length === 0 && (
+          <div className="mt-2">
+            <p className="text-tfl-grey text-sm">No stations match “{query}”.</p>
             <button
               type="button"
               onClick={() => places.search(query)}
@@ -224,23 +227,74 @@ export default function StationSearch({ id, label, selected, onSelect }) {
             >
               Search for a place called “{query}”
             </button>
-          )}
+          </div>
+        )}
 
-          {places.loading && (
-            <p className="text-tfl-grey mt-2 text-sm">Looking it up…</p>
-          )}
+      {/* Hidden once something is chosen: a list still offering alternatives
+          under a filled-in box reads as though the choice did not take. And
+          hidden once a place search has been asked for, because that was a
+          deliberate "not these". */}
+      {searching && !chosen && !places.query && stations.length > 0 && (
+        <>
+          <ul
+            ref={listRef}
+            className="border-tfl-line divide-tfl-line mt-1.5 max-h-52 divide-y overflow-y-auto border-2 bg-white"
+          >
+            {stations.map((station, index) => (
+              <li key={station.id}>
+                {/* A button, not a clickable li. Tab and the arrow keys
+                    reach it, Enter and Space activate it, and screen readers
+                    announce it as something that does something - none of
+                    which is true of a list item with an onClick. */}
+                <button
+                  type="button"
+                  onClick={() => choose(station)}
+                  onKeyDown={(event) => handleOptionKeys(event, index)}
+                  className="hover:bg-tfl-blue focus:bg-tfl-blue w-full px-4 py-2.5 text-left text-sm hover:text-white focus:text-white focus:outline-none"
+                >
+                  {shortName(station.name)}
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          {/* The place search, offered even when a station matched. It used
+              to appear only when none did, and a street name that happens to
+              begin a station's name hid it completely: "High Street" matches
+              High Street Kensington, so there was no way to look up a High
+              Street at all. Found by the end to end sweep, ISSUES.md #32.
+
+              Quieter than the offer above - a link, not a button - because
+              here the station list is usually the right answer and this is
+              the way out when it is not. Outside the list on purpose, so the
+              arrow keys still move only between stations. */}
+          <button
+            type="button"
+            onClick={() => places.search(query)}
+            className="text-tfl-blue hover:text-tfl-blue-dark mt-1.5 text-xs underline underline-offset-2"
+          >
+            Not a station? Search for a place called “{query}”
+          </button>
+        </>
+      )}
+
+      {/* Whatever the place search found, whether it was offered because no
+          station matched or chosen instead of the ones that did. */}
+      {searching && !chosen && places.query && (
+        <div className="mt-2">
+          {places.loading && <p className="text-tfl-grey text-sm">Looking it up…</p>}
 
           {/* Could not look, as opposed to looked and found nothing. The
               reader cannot act on a missing credential, so it is said once
               and plainly. */}
-          {places.query && !places.loading && !places.available && (
-            <p className="text-tfl-grey mt-2 text-sm">
+          {!places.loading && !places.available && (
+            <p className="text-tfl-grey text-sm">
               Place search is not available right now.
             </p>
           )}
 
           {places.error && (
-            <p className="text-tfl-red mt-2 text-sm font-medium">
+            <p className="text-tfl-red text-sm font-medium">
               Could not search for places: {places.error}
             </p>
           )}
@@ -249,18 +303,17 @@ export default function StationSearch({ id, label, selected, onSelect }) {
               and something matched too far from the Underground to be a
               journey. Brighton is a real place and not a destination this
               service has an opinion about. */}
-          {places.query &&
-            !places.loading &&
+          {!places.loading &&
             places.available &&
             !places.error &&
             places.results.length === 0 && (
-              <p className="text-tfl-grey mt-2 text-sm">
+              <p className="text-tfl-grey text-sm">
                 Nothing near the Underground matched “{places.query}”.
               </p>
             )}
 
           {places.results.length > 0 && (
-            <ul className="mt-2 space-y-2">
+            <ul className="space-y-2">
               {places.results.map((match, index) => (
                 // Index as the key: matches have no id and the list is
                 // replaced wholesale by the next search.
@@ -292,32 +345,6 @@ export default function StationSearch({ id, label, selected, onSelect }) {
             </ul>
           )}
         </div>
-      )}
-
-      {/* Hidden once something is chosen: a list still offering alternatives
-          under a filled-in box reads as though the choice did not take. */}
-      {searching && !chosen && stations.length > 0 && (
-        <ul
-          ref={listRef}
-          className="border-tfl-line divide-tfl-line mt-1.5 max-h-52 divide-y overflow-y-auto border-2 bg-white"
-        >
-          {stations.map((station, index) => (
-            <li key={station.id}>
-              {/* A button, not a clickable li. Tab and the arrow keys reach
-                  it, Enter and Space activate it, and screen readers announce
-                  it as something that does something - none of which is true
-                  of a list item with an onClick. */}
-              <button
-                type="button"
-                onClick={() => choose(station)}
-                onKeyDown={(event) => handleOptionKeys(event, index)}
-                className="hover:bg-tfl-blue focus:bg-tfl-blue w-full px-4 py-2.5 text-left text-sm hover:text-white focus:text-white focus:outline-none"
-              >
-                {shortName(station.name)}
-              </button>
-            </li>
-          ))}
-        </ul>
       )}
     </section>
   )

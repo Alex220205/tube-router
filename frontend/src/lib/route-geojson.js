@@ -85,6 +85,13 @@ export function toRouteGeoJson(route, network) {
       // change. Everything else is a station the train goes through.
       const isEnd = stop === leg.stations[0] || stop === leg.stations.at(-1)
 
+      // The two ends of the whole journey, as opposed to the ends of a leg.
+      // Every change is the end of one leg and the start of the next, so
+      // `isEnd` is true for both; this is true only for where you got on and
+      // where you get off.
+      const isTerminus =
+        stop === route.legs[0].stations[0] || stop === route.legs.at(-1).stations.at(-1)
+
       stops.set(stop.id, {
         type: 'Feature',
         properties: {
@@ -100,6 +107,12 @@ export function toRouteGeoJson(route, network) {
           // planned - which is the one time somebody is looking to see
           // whether they can get out at the other end.
           stepFree: Boolean(station.step_free),
+          // Where you get on and where you get off, as distinct from a
+          // change. Used only to decide which label is placed first when
+          // two of them cannot both fit: losing the name of a station you
+          // pass through is a nuisance, losing the name of your destination
+          // is the map failing at its job. Sticky across legs, like `major`.
+          terminus: stops.get(stop.id)?.properties.terminus || isTerminus,
         },
         geometry: { type: 'Point', coordinates: [station.lon, station.lat] },
       })
