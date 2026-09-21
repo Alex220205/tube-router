@@ -1,5 +1,6 @@
 /**
- * What the marks on the map mean.
+ * What the marks on the map mean, and what the status wording's colours
+ * mean.
  *
  * WHY THIS EXISTS
  *     The map carries five distinct signals - a plain station, a step-free
@@ -7,6 +8,11 @@
  *     until this existed the page explained none of them. TfL's own map
  *     devotes a corner to exactly this, and a blue ring nobody has been told
  *     about is decoration rather than information.
+ *
+ *     The same argument brought the line status colours in here. The panel
+ *     below prints "Part Closure" in red and "Minor Delays" in dark amber,
+ *     and those are two different answers to "did this change my journey".
+ *     Nowhere else says so.
  *
  *     Collapsed by default. It is reference material: needed once, then in
  *     the way.
@@ -23,6 +29,11 @@
  *     because a 12px glyph is illegible at the zoom where a whole line fits
  *     and a ring reads at every zoom this map has.
  *
+ *     And the status colours, which say what the router did rather than how
+ *     bad the disruption sounds. Red and black are the two that changed the
+ *     journey; everything warmer was used normally, because a delay is not a
+ *     reason to reroute someone without asking.
+ *
  *     It is also deliberately narrower than TfL's key. Theirs lists National
  *     Rail, river services, airports, cable car, fare zones and Oyster
  *     validity - none of which this map draws. A key describing marks that
@@ -30,6 +41,7 @@
  */
 
 import { useState } from 'react'
+import { BAND_ORDER, BANDS } from '../lib/severity'
 
 // Mirrors the paint in TubeMap.jsx. Duplicated rather than imported because
 // those are MapLibre paint values in a WebGL canvas and these are CSS on DOM
@@ -83,10 +95,51 @@ export default function MapKey({ lines }) {
             Lines that share track are drawn side by side. Positions are the real ones,
             so a line between two stations is straight rather than following the track.
           </li>
+
+          {/* The status panel's wording, in the colours it prints them in.
+              Listed worst last so it reads as a scale.
+
+              Each row IS its own swatch: the label is drawn in the same
+              colour the panel uses, so there is nothing to match up between
+              a square here and a word down there. */}
+          <li className="border-tfl-line mt-2 border-t pt-2">
+            <h3 className="text-tfl-grey mb-1 font-bold tracking-wider uppercase">
+              Line status
+            </h3>
+            <ul className="space-y-1">
+              {BAND_ORDER.map((key) => (
+                <li key={key} className="flex gap-2">
+                  <span
+                    className="w-24 shrink-0 font-medium"
+                    style={{ color: BANDS[key].colour }}
+                  >
+                    {BANDS[key].label}
+                  </span>
+                  <span className="text-tfl-grey min-w-0 flex-1">{MEANINGS[key]}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-tfl-grey mt-1.5">
+              Grey is no status at all, which is not the same as good service.
+            </p>
+          </li>
         </ul>
       )}
     </div>
   )
+}
+
+// What each band means for the journey, not for the railway. "Severe
+// delays" describes the trains; "the router still used it" describes the
+// answer you were given, and that is the thing the colour is here to
+// explain.
+const MEANINGS = {
+  good: 'Running normally.',
+  info: 'Running. Something worth reading.',
+  minor: 'Running, slower. The route still uses it.',
+  bad: 'Running, much slower. The route still uses it.',
+  part: 'Part of it is shut. The route goes round the closed stretch.',
+  closed: 'Not running. The route will not use it at all.',
 }
 
 /** One key entry: a fixed-width swatch column so the labels line up. */
