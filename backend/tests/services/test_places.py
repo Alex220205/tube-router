@@ -32,7 +32,7 @@ WHAT CHANGED AND WHY
 import httpx
 import pytest
 
-from app.services.places import GoogleMapsClient, PlacesError
+from app.services.places import KINDS, GoogleMapsClient, PlacesError
 
 pytestmark = pytest.mark.anyio
 
@@ -72,7 +72,7 @@ async def test_the_key_is_sent_as_a_header_and_never_in_the_url() -> None:
         return httpx.Response(200, json=NEARBY_BODY)
 
     async with client(handler) as maps:
-        await maps.nearby(latitude=51.5, longitude=-0.1, kind="restaurant")
+        await maps.nearby(latitude=51.5, longitude=-0.1, types=KINDS["food"])
 
     request = seen[0]
     assert request.headers["X-Goog-Api-Key"] == "test-key"
@@ -104,7 +104,10 @@ async def test_a_blank_key_makes_no_request_at_all() -> None:
 
     async with client(handler, api_key="") as maps:
         assert maps.configured is False
-        assert await maps.nearby(latitude=51.5, longitude=-0.1, kind="cafe") == []
+        assert (
+            await maps.nearby(latitude=51.5, longitude=-0.1, types=KINDS["coffee"])
+            == []
+        )
         assert await maps.street_view(latitude=51.5, longitude=-0.1) is None
 
     assert calls == 0
@@ -122,11 +125,18 @@ async def test_a_server_error_is_retried_and_then_succeeds() -> None:
         return httpx.Response(200, json=NEARBY_BODY)
 
     async with client(handler) as maps:
-        found = await maps.nearby(latitude=51.5, longitude=-0.1, kind="restaurant")
+        found = await maps.nearby(
+            latitude=51.5117, longitude=-0.1274, types=KINDS["food"]
+        )
 
     assert attempts == 2
     assert [p.name for p in found] == ["Dishoom"]
     assert found[0].ratings == 9123
+
+    # Asked for from the station the search was centred on, not returned by
+    # Google. Dishoom is at the centre point here, so it is a few metres.
+    assert found[0].metres is not None
+    assert found[0].metres < 50
 
 
 async def test_a_client_error_is_not_retried() -> None:
@@ -142,6 +152,36 @@ async def test_a_client_error_is_not_retried() -> None:
 
     async with client(handler) as maps:
         with pytest.raises(PlacesError, match="will not change on a retry"):
-            await maps.nearby(latitude=51.5, longitude=-0.1, kind="restaurant")
+            await maps.nearby(latitude=51.5, longitude=-0.1, types=KINDS["food"])
 
     assert attempts == 1
+
+
+async def test_a_category_asks_for_every_type_it_covers() -> None:
+    """The fix for a list that was empty outside zone 1.
+
+    A category is a human idea and Google's types are narrower than it: Table
+    A files a pub apart from a bar, and a park apart from a garden and a
+    historical landmark. Sending one type per category returned two places to
+    eat at Epping and nothing at all to look at.
+
+    This asserts the expansion reaches the request, because a category that
+    quietly narrowed back to one type would still return a plausible short
+    list and nothing would raise.
+    """
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json=NEARBY_BODY)
+
+    async with client(handler) as maps:
+        await maps.nearby(latitude=51.5, longitude=-0.1, types=KINDS["see"])
+
+    assert seen[0]["includedTypes"] == list(KINDS["see"])
+    assert len(seen[0]["includedTypes"]) > 1
+
+    # Every category is plural, or it is back to the bug this closed.
+    assert all(len(types) > 1 for types in KINDS.values())

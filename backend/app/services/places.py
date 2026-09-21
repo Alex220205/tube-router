@@ -51,6 +51,7 @@ WHAT'S NEW
 """
 
 import asyncio
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -76,21 +77,37 @@ FIELD_MASK = ",".join(
     )
 )
 
-# The categories offered. Google accepts far more; these are the five the UI
-# shows, and the allow list exists so a client cannot put an arbitrary string
-# into a billed request.
+# The five categories the UI offers, and the Google place types each one
+# expands to. Every string on the right is from Table A of Google's place
+# type list, checked against their documentation rather than guessed.
 #
-# The frontend keeps its own copy for labels. This one is authoritative: the
-# route returns 400 on anything not here.
-KINDS = frozenset(
-    {
-        "restaurant",
-        "cafe",
-        "bar",
-        "museum",
+# ONE CATEGORY IS SEVERAL TYPES, and that is the whole point. The first
+# version sent a single type and it was close to useless outside zone 1: at
+# Epping, "restaurant" within 500m returned two results and
+# "tourist_attraction" returned nothing at all. Epping is not short of places
+# to eat or things to look at - it is short of places Google files under
+# exactly those two labels. Table A distinguishes a pub from a bar from a
+# cocktail_bar, and a park from a garden from a historical_landmark, so
+# asking for one of each pair is asking for a fraction of what is there.
+#
+# includedTypes accepts up to 50, so breadth here is free.
+#
+# The frontend keeps its own copy of the keys, for labels. This mapping is
+# authoritative: the route answers 400 for any key not in it, and the browser
+# never names a Google type at all.
+KINDS: dict[str, tuple[str, ...]] = {
+    "food": ("restaurant", "meal_takeaway", "bakery"),
+    "coffee": ("cafe", "coffee_shop", "bakery"),
+    "pubs": ("pub", "bar"),
+    "museums": ("museum", "art_gallery"),
+    "see": (
         "tourist_attraction",
-    }
-)
+        "historical_landmark",
+        "park",
+        "garden",
+        "performing_arts_theater",
+    ),
+}
 
 
 class PlacesError(RuntimeError):
@@ -103,14 +120,17 @@ class Place:
 
     Frozen for the same reason StationData is: it crosses the boundary out of
     this module and nothing downstream has any business editing it.
+
+    `metres` is straight line from the station, computed here rather than
+    asked for - Google does not return a distance, and the coordinates needed
+    to work one out are already in the field mask and already paid for.
     """
 
     name: str
     address: str | None
     rating: float | None
     ratings: int | None
-    latitude: float | None
-    longitude: float | None
+    metres: int | None
 
 
 class GoogleMapsClient:
@@ -235,16 +255,18 @@ class GoogleMapsClient:
         *,
         latitude: float,
         longitude: float,
-        kind: str,
-        radius_metres: float = 500.0,
+        types: tuple[str, ...],
+        radius_metres: float = 1500.0,
         max_results: int = 8,
     ) -> list[Place]:
-        """Places of one kind near a point, nearest first.
+        """Places of several related types near a point, nearest first.
 
         Args:
             latitude: WGS84.
             longitude: WGS84.
-            kind: A Google place type. Validated by the caller against KINDS.
+            types: Google place types, from one entry in KINDS. Several, not
+                one, because a category is a human idea and Google's types
+                are narrower than it.
             radius_metres: Google accepts 0 to 50,000.
             max_results: Google accepts 1 to 20.
 
@@ -277,7 +299,7 @@ class GoogleMapsClient:
                 "X-Goog-FieldMask": FIELD_MASK,
             },
             json={
-                "includedTypes": [kind],
+                "includedTypes": list(types),
                 "maxResultCount": max_results,
                 "rankPreference": "DISTANCE",
                 "locationRestriction": {
@@ -297,7 +319,9 @@ class GoogleMapsClient:
 
         # Google omits `places` entirely when there are no results rather
         # than sending an empty array, so this cannot be payload["places"].
-        return [_place(entry) for entry in payload.get("places", [])]
+        return [
+            _place(entry, latitude, longitude) for entry in payload.get("places", [])
+        ]
 
     async def street_view(
         self, *, latitude: float, longitude: float, size: str = "400x200"
@@ -361,19 +385,51 @@ class GoogleMapsClient:
         return image.content
 
 
-def _place(entry: dict[str, Any]) -> Place:
-    """One Google result, flattened.
+def _place(entry: dict[str, Any], from_lat: float, from_lon: float) -> Place:
+    """One Google result, flattened, with how far it is from the station.
 
     Every field is optional on Google's side even when requested in the mask,
     so each is read defensively. A place with no name is not worth showing
     and gets an empty string the caller can drop.
     """
     location = entry.get("location") or {}
+    lat, lon = location.get("latitude"), location.get("longitude")
+
     return Place(
         name=(entry.get("displayName") or {}).get("text", ""),
         address=entry.get("formattedAddress"),
         rating=entry.get("rating"),
         ratings=entry.get("userRatingCount"),
-        latitude=location.get("latitude"),
-        longitude=location.get("longitude"),
+        metres=(
+            None
+            if lat is None or lon is None
+            else _metres_between(from_lat, from_lon, lat, lon)
+        ),
     )
+
+
+# Mean Earth radius. Good to about 0.5% at these distances, which is well
+# inside the error of "straight line from the station entrance" anyway.
+_EARTH_RADIUS_M = 6_371_000.0
+
+
+def _metres_between(lat1: float, lon1: float, lat2: float, lon2: float) -> int:
+    """Great circle distance in metres, rounded.
+
+    Straight line, not walking distance, and the page says so. Google does
+    not return a distance from a Nearby Search and asking the Routes API for
+    a real walking time would be a second billed call per result.
+
+    Here rather than in PostGIS, which could do it exactly: these coordinates
+    never touch the database, and a round trip per result to avoid six lines
+    of trigonometry is the wrong shape.
+    """
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lambda = math.radians(lon2 - lon1)
+
+    a = (
+        math.sin(d_phi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
+    )
+    return round(_EARTH_RADIUS_M * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
