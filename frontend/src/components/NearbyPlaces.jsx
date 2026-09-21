@@ -45,6 +45,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { streetViewUrl } from '../api'
+import { STEP_FREE } from './MapKey'
 import { usePlaces } from '../hooks/usePlaces'
 import { shortName } from '../lib/station-name'
 
@@ -237,7 +238,32 @@ export default function NearbyPlaces({ destination }) {
                 // Index as the key, as with the route legs: the list is
                 // replaced wholesale by the next answer and never reordered.
                 <li key={index} className="py-1.5">
-                  <p className="text-sm font-medium">{place.name}</p>
+                  <p className="flex items-center gap-1.5 text-sm font-medium">
+                    {/* The same blue ring the map draws on a step-free
+                        station and the key explains, because it is the same
+                        claim at the other end of the journey: you can get
+                        in. Reusing the mark is the point - a second symbol
+                        for the same idea would need its own explanation.
+
+                        Shown ONLY when Google says true. Most places have no
+                        accessibility data at all, and an absent value is
+                        nobody having recorded it rather than a step at the
+                        door. Marking those as inaccessible would be a
+                        confident lie about a real business, and the person
+                        it would mislead is the one who most needs it right. */}
+                    {place.wheelchair_entrance && (
+                      <span
+                        title="Step-free entrance, according to Google"
+                        className="inline-block shrink-0 rounded-full bg-white"
+                        style={{
+                          width: 9,
+                          height: 9,
+                          border: `2.5px solid ${STEP_FREE}`,
+                        }}
+                      />
+                    )}
+                    {place.name}
+                  </p>
                   {place.address && (
                     <p className="text-tfl-grey text-xs">{place.address}</p>
                   )}

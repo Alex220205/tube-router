@@ -65,6 +65,18 @@ class Place(BaseModel):
             "result. The page labels it as straight line."
         ),
     )
+    wheelchair_entrance: bool | None = Field(
+        default=None,
+        description=(
+            "True when Google records a wheelchair accessible entrance. "
+            "NULL means nobody has recorded anything, which is not the same "
+            "as false and must not be rendered as one: most places on Earth "
+            "have no accessibility data, and telling a wheelchair user that "
+            "a restaurant is inaccessible on the strength of missing data is "
+            "a confident lie about a real business. The page marks true and "
+            "says nothing at all for null."
+        ),
+    )
 
 
 class PlacesResponse(BaseModel):

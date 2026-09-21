@@ -27,10 +27,22 @@
  *     up and down through it, up again to come back out. Typing a station
  *     name and then reaching for the trackpad to click the one result it
  *     found is the sort of thing that makes a form feel unfinished.
+ *
+ *     It also searches places, not only stations. "British Museum" is not a
+ *     station and never will be, and requiring somebody to already know it
+ *     means Tottenham Court Road is requiring them to know the network
+ *     before they can use the thing that explains the network.
+ *
+ *     The place search appears ONLY when no station matched, which is
+ *     exactly when it is needed and never when it is noise - type "victoria"
+ *     and you want the station, so you get the station. It is also the one
+ *     control here that costs money per press, so it is a press: never a
+ *     keystroke, never automatic.
  */
 
 import { useRef, useState } from 'react'
 import { shortName } from '../lib/station-name'
+import { useGeocode } from '../hooks/useGeocode'
 import { useStations } from '../hooks/useStations'
 
 /**
@@ -44,6 +56,9 @@ import { useStations } from '../hooks/useStations'
 export default function StationSearch({ id, label, selected, onSelect }) {
   const [query, setQuery] = useState('')
   const { stations, loading, error } = useStations(query)
+
+  // Only ever consulted on an explicit press. See hooks/useGeocode.js.
+  const places = useGeocode()
 
   // Derived, not stored. A second piece of state saying "the list is closed"
   // could disagree with the selection it was meant to reflect, and the two
@@ -66,11 +81,25 @@ export default function StationSearch({ id, label, selected, onSelect }) {
     // new is picked - leaves the box reading "Oxfo" while the route below is
     // still from Oxford Circus, which is a lie the user has no way to spot.
     if (selected) onSelect(null)
+
+    // And it drops any place results, which were an answer about text that
+    // is no longer in the box.
+    places.reset()
   }
 
   function choose(station) {
     setQuery(shortName(station.name))
     onSelect(station)
+    places.reset()
+  }
+
+  // A station the geocoder offered. It carries naptan_id and name and no
+  // coordinates, which is all the route request needs - the same shape the
+  // station search hands over, so onSelect cannot tell where it came from.
+  function chooseNearby(station) {
+    setQuery(shortName(station.name))
+    onSelect({ naptan_id: station.naptan_id, name: station.name })
+    places.reset()
   }
 
   // Moving through the list is moving focus, not tracking a highlighted index
@@ -103,9 +132,20 @@ export default function StationSearch({ id, label, selected, onSelect }) {
     // deliberately does nothing. Picking the first of fifty on a keypress the
     // user meant as "done typing" is a decision made on their behalf, and the
     // arrow key that makes it theirs is one key away.
-    if (event.key === 'Enter' && searching && !chosen && stations.length === 1) {
+    if (event.key !== 'Enter' || !searching || chosen) return
+
+    if (stations.length === 1) {
       event.preventDefault()
       choose(stations[0])
+      return
+    }
+
+    // No stations at all means the place search is the only thing being
+    // offered, so Enter takes it - the same rule as picking the only result,
+    // applied to the only remaining option.
+    if (stations.length === 0 && !loading && !error && !places.query) {
+      event.preventDefault()
+      places.search(query)
     }
   }
 
@@ -169,9 +209,89 @@ export default function StationSearch({ id, label, selected, onSelect }) {
       )}
 
       {/* An empty result is a real answer, not an error. Saying so beats
-          rendering an empty box the user has to interpret. */}
+          rendering an empty box the user has to interpret - and it is also
+          the moment to offer the thing that does work, because somebody
+          typing text that is not a station name has usually typed a place. */}
       {searching && !loading && !error && !chosen && stations.length === 0 && (
-        <p className="text-tfl-grey mt-2 text-sm">No stations match “{query}”.</p>
+        <div className="mt-2">
+          <p className="text-tfl-grey text-sm">No stations match “{query}”.</p>
+
+          {!places.query && (
+            <button
+              type="button"
+              onClick={() => places.search(query)}
+              className="border-tfl-blue text-tfl-blue hover:bg-tfl-blue mt-1.5 w-full border-2 px-3 py-2 text-sm font-medium hover:text-white"
+            >
+              Search for a place called “{query}”
+            </button>
+          )}
+
+          {places.loading && (
+            <p className="text-tfl-grey mt-2 text-sm">Looking it up…</p>
+          )}
+
+          {/* Could not look, as opposed to looked and found nothing. The
+              reader cannot act on a missing credential, so it is said once
+              and plainly. */}
+          {places.query && !places.loading && !places.available && (
+            <p className="text-tfl-grey mt-2 text-sm">
+              Place search is not available right now.
+            </p>
+          )}
+
+          {places.error && (
+            <p className="text-tfl-red mt-2 text-sm font-medium">
+              Could not search for places: {places.error}
+            </p>
+          )}
+
+          {/* Wording that is true of both cases it covers: nothing matched,
+              and something matched too far from the Underground to be a
+              journey. Brighton is a real place and not a destination this
+              service has an opinion about. */}
+          {places.query &&
+            !places.loading &&
+            places.available &&
+            !places.error &&
+            places.results.length === 0 && (
+              <p className="text-tfl-grey mt-2 text-sm">
+                Nothing near the Underground matched “{places.query}”.
+              </p>
+            )}
+
+          {places.results.length > 0 && (
+            <ul className="mt-2 space-y-2">
+              {places.results.map((match, index) => (
+                // Index as the key: matches have no id and the list is
+                // replaced wholesale by the next search.
+                <li key={index} className="border-tfl-line border-2 p-2">
+                  {/* Google's own formatted address, because it is the only
+                      thing distinguishing one "High St" from the next six
+                      and it is not ours to reword. */}
+                  <p className="text-xs font-medium">{match.address}</p>
+                  <ul className="mt-1.5 space-y-1">
+                    {match.stations.map((station) => (
+                      <li key={station.naptan_id}>
+                        <button
+                          type="button"
+                          onClick={() => chooseNearby(station)}
+                          className="hover:bg-tfl-blue focus:bg-tfl-blue flex w-full items-baseline justify-between gap-2 px-2 py-1.5 text-left text-sm hover:text-white focus:text-white focus:outline-none"
+                        >
+                          <span>{shortName(station.name)}</span>
+                          <span className="shrink-0 text-xs opacity-70">
+                            {station.metres < 1000
+                              ? `${station.metres} m`
+                              : `${(station.metres / 1000).toFixed(1)} km`}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       {/* Hidden once something is chosen: a list still offering alternatives

@@ -84,11 +84,18 @@ back to `http://localhost:8000`, so no environment file is needed for this.
 The backend container has no source mount and no `--reload` either, by the
 same deliberate trade: `docker compose up -d --build api`.
 
-### Optional: what is near your destination
+### Optional: Google Maps features
 
-With a Google Maps key, the route panel gains a collapsed **Near ...**
-section listing places around the destination station, with a photograph of
-the exit. Without one it simply does not appear, and nothing else changes.
+With a Google Maps key the app gains two things, and without one neither
+appears and nothing else changes.
+
+**Near your destination.** A collapsed section under the route listing places
+around the destination station, with a photograph of the exit and a mark on
+the ones with a wheelchair accessible entrance.
+
+**Search by place, not station.** Type "British Museum" into From or To and,
+when no station matches, it offers to look the place up and gives you the
+nearest stations to walk from.
 
 ```bash
 # in .env
@@ -99,7 +106,9 @@ Then `docker compose up -d api`. No rebuild: unlike the frontend's
 `VITE_API_URL`, this is read at run time.
 
 Get a key from the [Google Cloud console](https://console.cloud.google.com/)
-and **restrict it to Places API (New) and Street View Static API**. The key
+and **restrict it to Places API (New), Street View Static API and Geocoding
+API**. It must be a plain API key rather than one bound to a service
+account. The key
 stays on the server, including for the photograph, which is proxied rather
 than linked - a signed Google URL in the page would be a key in the page.
 
