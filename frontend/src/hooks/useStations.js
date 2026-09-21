@@ -21,6 +21,24 @@
  *     can land after a fast one for "oxford" and overwrite it - the user sees
  *     results for something they finished typing a second ago, and nothing
  *     looks broken enough to report.
+ *
+ *     And the answer is stored with the question it answers, which the first
+ *     version did not do and which the other three fetching hooks already
+ *     did. docs/DECISIONS.md said as much in Phase 8b: "this is stricter
+ *     than useStations ... worth knowing about when the older one is next
+ *     touched."
+ *
+ *     What it cost, found by an end to end sweep rather than by reading:
+ *     for the 250ms between a keystroke and the debounced request, this hook
+ *     returned the PREVIOUS query's results with `loading` false. Pick Oxford
+ *     Circus, type "heathrow", press Enter at once - and Enter, seeing one
+ *     result, picked Oxford Circus. The same window flashed "No stations
+ *     match" for text that does match, and let Enter fire a billed geocode
+ *     for it. Three wrong answers from one stale value, none of them raising.
+ *
+ *     Now results for any other query are simply not returned, and `loading`
+ *     is true from the keystroke rather than from the request. A stale answer
+ *     cannot be shown because it cannot be read. See ISSUES.md #31.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -35,9 +53,10 @@ const DEBOUNCE_MS = 250
  * @returns {{stations: Array, loading: boolean, error: string | null}}
  */
 export function useStations(query) {
-  const [stations, setStations] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
+  // One piece of state, tagged with the query it answers. Three separate
+  // values - stations, loading, error - could each belong to a different
+  // query; this cannot.
+  const [answer, setAnswer] = useState(null)
   const controller = useRef(null)
 
   useEffect(() => {
@@ -48,26 +67,30 @@ export function useStations(query) {
       const current = new AbortController()
       controller.current = current
 
-      setLoading(true)
       fetchStations(query, current.signal)
         .then((results) => {
           if (current.signal.aborted) return
-          setStations(results)
-          setError(null)
+          setAnswer({ query, stations: results, error: null })
         })
         .catch((err) => {
           // An abort is this hook's own doing, not a failure to report.
           if (current.signal.aborted || err.name === 'AbortError') return
-          setError(err.message)
-          setStations([])
-        })
-        .finally(() => {
-          if (!current.signal.aborted) setLoading(false)
+          setAnswer({ query, stations: [], error: err.message })
         })
     }, DEBOUNCE_MS)
 
     return () => clearTimeout(timer)
   }, [query])
 
-  return { stations, loading, error }
+  // Only an answer to the text currently in the box counts. Anything else is
+  // a leftover, and "loading" is exactly the state of having text without an
+  // answer to it - which starts at the keystroke, not 250ms later when the
+  // request goes out.
+  const current = answer?.query === query ? answer : null
+
+  return {
+    stations: current?.stations ?? [],
+    loading: current === null,
+    error: current?.error ?? null,
+  }
 }

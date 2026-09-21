@@ -154,6 +154,55 @@ describe('StationSearch', () => {
     expect(chosen.mock.calls[0][0].naptan_id).toBe('940GZZLUHR5')
   })
 
+  it('does not pick a result left over from the previous search', async () => {
+    // Found by the end to end sweep, not by reading the code. Pick Oxford
+    // Circus, type "heathrow", press Enter straight away - and the box read
+    // "Oxford Circus". For the 250ms before the debounced request went out,
+    // the hook still held the last query's single result with loading false,
+    // so Enter saw exactly one result and took it.
+    //
+    // A fast typist got the wrong station, silently. See ISSUES.md #31.
+    mockStations((url) => {
+      const q = (new URL(url).searchParams.get('q') ?? '').toLowerCase()
+      if (q.startsWith('oxford')) {
+        return Promise.resolve(
+          ok([station(1, '940GZZLUOXC', 'Oxford Circus Underground Station')]),
+        )
+      }
+      if (q.startsWith('heathrow')) {
+        return Promise.resolve(
+          ok([
+            station(2, '940GZZLUHR4', 'Heathrow Terminal 4 Underground Station'),
+            station(3, '940GZZLUHR5', 'Heathrow Terminal 5 Underground Station'),
+          ]),
+        )
+      }
+      return Promise.resolve(ok([]))
+    })
+
+    const chosen = vi.fn()
+    renderSearch(chosen)
+    const box = screen.getByLabelText('From')
+
+    await userEvent.type(box, 'oxford circus')
+    await screen.findByText('Oxford Circus')
+    await userEvent.keyboard('{Enter}')
+    await waitFor(() =>
+      expect(chosen).toHaveBeenCalledWith(
+        expect.objectContaining({ naptan_id: '940GZZLUOXC' }),
+      ),
+    )
+    chosen.mockClear()
+
+    // Type and press Enter inside the debounce window, as a person does.
+    await userEvent.clear(box)
+    await userEvent.type(box, 'heathrow{Enter}')
+
+    expect(chosen).not.toHaveBeenCalledWith(
+      expect.objectContaining({ naptan_id: '940GZZLUOXC' }),
+    )
+  })
+
   it('reports an unreachable API instead of appearing to find nothing', async () => {
     mockStations(() => Promise.reject(new Error('Failed to fetch')))
 
