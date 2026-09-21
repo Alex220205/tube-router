@@ -72,6 +72,11 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       CORS_ORIGINS: ${CORS_ORIGINS}
+      # Run-time, unlike the frontend's VITE_API_URL above: this is read by
+      # the API process, never baked into anything, so a new key is a
+      # restart rather than a rebuild. Empty when unset, which the service
+      # treats as "the feature is off" rather than as an error.
+      GOOGLE_MAPS_KEY: ${GOOGLE_MAPS_KEY:-}
     ports:
       # Left on all interfaces, unlike db and redis: these two are the
       # application, and reaching the demo from a phone on the same network is

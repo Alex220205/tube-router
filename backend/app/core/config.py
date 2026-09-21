@@ -111,6 +111,43 @@ class Settings(BaseSettings):
     # if the two ever overlap.
     tfl_status_poll_seconds: float = 60.0
 
+    # --- Google Maps (Phase 9) ---------------------------------------------
+    # Two hosts, because Google splits them. Places API (New) lives on
+    # places.googleapis.com; Street View Static is still on the older
+    # maps.googleapis.com.
+    google_places_base_url: str = "https://places.googleapis.com"
+    google_street_view_base_url: str = "https://maps.googleapis.com"
+
+    # Blank disables the feature completely: no request is made, the endpoint
+    # answers `available: false`, and the page renders nothing. The project
+    # has to work for someone who has not got a key, the way it already does
+    # without a TfL one.
+    #
+    # NOT the 2021 key. That one is written into database[works].py in plain
+    # text and is revoked in Phase 10.
+    google_maps_key: str = ""
+
+    # Shorter than TfL's 30s. Nothing here blocks an answer the user asked
+    # for - a route is already on screen before this is ever called - so a
+    # slow Google should give up quickly rather than hold a connection.
+    google_maps_timeout_seconds: float = 5.0
+
+    # Total attempts including the first, as with TfL.
+    google_maps_max_attempts: int = 3
+
+    # How far around the station to look. 500m is roughly a six minute walk,
+    # which is the distance at which "near the station" stops being true.
+    google_places_radius_metres: float = 500.0
+
+    # Google allows 1 to 20. Eight is a list you read rather than scroll.
+    google_places_max_results: int = 8
+
+    # A day for places, because opening hours and ratings drift; a month for
+    # Street View, because a station entrance does not move. Both are billing
+    # decisions before they are latency ones.
+    google_places_cache_ttl_seconds: int = 86_400
+    google_street_view_cache_ttl_seconds: int = 2_592_000
+
     # Comma-separated in the environment because env vars are strings.
     # Parsed by cors_origin_list below.
     cors_origins: str = "http://localhost:5173"

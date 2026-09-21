@@ -84,6 +84,28 @@ back to `http://localhost:8000`, so no environment file is needed for this.
 The backend container has no source mount and no `--reload` either, by the
 same deliberate trade: `docker compose up -d --build api`.
 
+### Optional: what is near your destination
+
+With a Google Maps key, the route panel gains a collapsed **Near ...**
+section listing places around the destination station, with a photograph of
+the exit. Without one it simply does not appear, and nothing else changes.
+
+```bash
+# in .env
+GOOGLE_MAPS_KEY=...
+```
+
+Then `docker compose up -d api`. No rebuild: unlike the frontend's
+`VITE_API_URL`, this is read at run time.
+
+Get a key from the [Google Cloud console](https://console.cloud.google.com/)
+and **restrict it to Places API (New) and Street View Static API**. The key
+stays on the server, including for the photograph, which is proxied rather
+than linked - a signed Google URL in the page would be a key in the page.
+
+Nothing is requested until the section is opened, and answers are cached, so
+browsing routes costs nothing.
+
 ## Tests
 
 ```bash
@@ -104,4 +126,4 @@ with it.
 
 ## The 2021 version
 
-Link and comparison to follow in Phase 9.
+Link and comparison to follow in Phase 10.
