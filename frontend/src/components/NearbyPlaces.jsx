@@ -27,18 +27,23 @@
  *     anyone plans, including the ones nobody scrolls down to.
  *
  * WHAT'S NEW
- *     `available: false` renders nothing at all. Not an error, not "none
- *     found" - nothing. A missing key or an unreachable Google is not a
- *     fault the reader can act on, and the route above is unaffected either
- *     way, so the honest response is silence.
+ *     `available: false` is reported as one quiet line rather than as an
+ *     error. A missing key or an unreachable Google is not a fault the
+ *     reader can act on, and the route above is unaffected either way.
  *
- *     That is the opposite of how LineStatus treats an unknown state, and
- *     the two are reconcilable: a missing line status can send someone to a
- *     platform with no trains, and a missing restaurant list cannot mislead
- *     anyone about anything.
+ *     The first version unmounted the whole section on `available: false`,
+ *     on the grounds that silence was the honest answer. It was, and it was
+ *     also unusable: you can only learn the answer by opening the section,
+ *     so clicking it made the thing you clicked vanish. From the outside
+ *     that is indistinguishable from a dead button, which is exactly how it
+ *     was reported.
+ *
+ *     Nothing that responds to a click may disappear as a result of it. The
+ *     silence is still there - it is just one sentence long instead of
+ *     zero, and it stays where your eye already is.
  */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { streetViewUrl } from '../api'
 import { usePlaces } from '../hooks/usePlaces'
 import { shortName } from '../lib/station-name'
@@ -65,6 +70,7 @@ const KINDS = [
 export default function NearbyPlaces({ destination }) {
   const [open, setOpen] = useState(false)
   const [kind, setKind] = useState(KINDS[0].value)
+  const container = useRef(null)
 
   // The one hook here that costs money, so `open` gates it rather than
   // merely hiding what it returned.
@@ -74,19 +80,24 @@ export default function NearbyPlaces({ destination }) {
     open,
   )
 
+  // This section is the last thing in a panel that scrolls, so opening it
+  // adds content below the fold and the click appears to do nothing at all.
+  // `nearest` scrolls the minimum needed and leaves the view alone when it
+  // was already visible, so it never yanks the panel around for no reason.
+  useEffect(() => {
+    if (open) container.current?.scrollIntoView({ block: 'nearest' })
+  }, [open])
+
   // No legs means no destination. Oxford Circus to Oxford Circus is a valid
   // answer with an empty leg list, and it is in docs/TEST_JOURNEYS.md as a
   // case that must not throw.
   if (!destination) return null
 
-  // The server could not look. Say nothing rather than explaining a
-  // credential problem to somebody who wanted a sandwich.
-  if (open && !loading && !available) return null
-
   const listId = 'nearby-places'
+  const unavailable = open && !loading && !available
 
   return (
-    <div className="border-tfl-line mt-4 border-t pt-3">
+    <div ref={container} className="border-tfl-line mt-4 border-t pt-3">
       <button
         type="button"
         onClick={() => setOpen(!open)}
@@ -132,16 +143,28 @@ export default function NearbyPlaces({ destination }) {
               rather than leaving a broken image icon: a station Google has
               never photographed is ordinary, and the endpoint answers 404
               for it on purpose. */}
-          <img
-            src={streetViewUrl(destination.id)}
-            alt=""
-            className="border-tfl-line mt-2 w-full border object-cover"
-            onError={(event) => {
-              event.currentTarget.style.display = 'none'
-            }}
-          />
+          {!unavailable && (
+            <img
+              src={streetViewUrl(destination.id)}
+              alt=""
+              className="border-tfl-line mt-2 w-full border object-cover"
+              onError={(event) => {
+                event.currentTarget.style.display = 'none'
+              }}
+            />
+          )}
 
           {loading && <p className="text-tfl-grey mt-2 text-sm">Looking…</p>}
+
+          {/* "Could not look", not "could not find". The server says this
+              when it has no Google key or could not reach Google, and
+              neither is something the reader can do anything about - so it
+              is stated once, plainly, and not dressed as an error. */}
+          {unavailable && (
+            <p className="text-tfl-grey mt-2 text-sm">
+              Places are not available right now.
+            </p>
+          )}
 
           {error && (
             <p className="text-tfl-grey mt-2 text-sm">
@@ -149,11 +172,11 @@ export default function NearbyPlaces({ destination }) {
             </p>
           )}
 
-          {/* An empty list here is a real answer, unlike the unavailable
-              case above: we looked and there was nothing within 500m. */}
-          {!loading && !error && places.length === 0 && (
+          {/* An empty list here is a different statement from the one above:
+              we looked, and there was nothing within 500m. */}
+          {!loading && !error && available && places.length === 0 && (
             <p className="text-tfl-grey mt-2 text-sm">
-              Nothing listed within a few minutes' walk.
+              Nothing listed within a few minutes&apos; walk.
             </p>
           )}
 
@@ -181,9 +204,11 @@ export default function NearbyPlaces({ destination }) {
             </ul>
           )}
 
-          <p className="text-tfl-grey mt-2 text-[11px]">
-            Nearest first, within 500m. From Google.
-          </p>
+          {!unavailable && (
+            <p className="text-tfl-grey mt-2 text-[11px]">
+              Nearest first, within 500m. From Google.
+            </p>
+          )}
         </div>
       )}
     </div>
