@@ -204,7 +204,11 @@ export default function App() {
           </div>
 
           <div className="border-tfl-ink/10 pointer-events-auto max-w-xs min-h-0 overflow-y-auto border bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
-            <LineStatus status={status} lines={network?.lines} />
+            <LineStatus
+              status={status}
+              lines={network?.lines}
+              stations={network?.stations}
+            />
           </div>
         </div>
       </div>
