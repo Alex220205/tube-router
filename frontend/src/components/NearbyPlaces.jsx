@@ -115,8 +115,13 @@ export default function NearbyPlaces({ destination }) {
         <div id={listId} className="mt-2">
           {/* A radio group rather than buttons, for the same reason
               ObjectiveToggle is one: these are five values of one setting,
-              and a screen reader should say so. */}
-          <div className="flex flex-wrap gap-1">
+              and a screen reader should say so.
+
+              Hidden when we could not look at all. Offering five categories
+              that each change nothing is the same defect as ISSUES.md #23 in
+              a smaller form: a control that responds to being used by doing
+              nothing visible. */}
+          <div className={`flex flex-wrap gap-1 ${unavailable ? 'hidden' : ''}`}>
             {KINDS.map((option) => (
               <label
                 key={option.value}
