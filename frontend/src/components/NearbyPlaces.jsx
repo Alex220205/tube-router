@@ -55,12 +55,24 @@ import { shortName } from '../lib/station-name'
 // duplication is deliberate: a client is not a place to enforce what gets
 // sent to a paid API.
 const KINDS = [
-  { value: 'restaurant', label: 'Food' },
-  { value: 'cafe', label: 'Coffee' },
-  { value: 'bar', label: 'Pubs' },
-  { value: 'museum', label: 'Museums' },
-  { value: 'tourist_attraction', label: 'To see' },
+  { value: 'food', label: 'Food' },
+  { value: 'coffee', label: 'Coffee' },
+  { value: 'pubs', label: 'Pubs' },
+  { value: 'museums', label: 'Museums' },
+  { value: 'see', label: 'To see' },
 ]
+
+/**
+ * A distance a person can act on. Metres up to a kilometre, then one decimal
+ * place, because "1400 m" is arithmetic and "1.4 km" is a decision.
+ *
+ * @param {number | null | undefined} metres
+ * @returns {string}
+ */
+function walk(metres) {
+  if (metres === null || metres === undefined) return ''
+  return metres < 1000 ? `${metres} m` : `${(metres / 1000).toFixed(1)} km`
+}
 
 /**
  * @param {object} props
@@ -113,6 +125,34 @@ export default function NearbyPlaces({ destination }) {
 
       {open && (
         <div id={listId} className="mt-2">
+          {/* The station, above the categories rather than below them.
+              It sat under the chips at first and never changed when they
+              did, which read as a bug: the same photograph over Food,
+              Coffee and Pubs looks like a picture that failed to update.
+              It is a picture of the station exit and always was, so it
+              belongs above the thing that filters the list, with a caption
+              that says which it is.
+
+              Loaded by the browser from our own API, so the key stays on the
+              server. onError hides it rather than leaving a broken image
+              icon: a station Google has never driven past is ordinary, and
+              the endpoint answers 404 for it on purpose. */}
+          {!unavailable && (
+            <figure className="mb-2">
+              <img
+                src={streetViewUrl(destination.id)}
+                alt={`Street view outside ${shortName(destination.name)} station`}
+                className="border-tfl-line w-full border object-cover"
+                onError={(event) => {
+                  event.currentTarget.closest('figure').style.display = 'none'
+                }}
+              />
+              <figcaption className="text-tfl-grey mt-1 text-[11px]">
+                Outside {shortName(destination.name)} station
+              </figcaption>
+            </figure>
+          )}
+
           {/* A radio group rather than buttons, for the same reason
               ObjectiveToggle is one: these are five values of one setting,
               and a screen reader should say so.
@@ -144,21 +184,6 @@ export default function NearbyPlaces({ destination }) {
             ))}
           </div>
 
-          {/* Loaded by the browser, from our own API. onError hides it
-              rather than leaving a broken image icon: a station Google has
-              never photographed is ordinary, and the endpoint answers 404
-              for it on purpose. */}
-          {!unavailable && (
-            <img
-              src={streetViewUrl(destination.id)}
-              alt=""
-              className="border-tfl-line mt-2 w-full border object-cover"
-              onError={(event) => {
-                event.currentTarget.style.display = 'none'
-              }}
-            />
-          )}
-
           {loading && <p className="text-tfl-grey mt-2 text-sm">Looking…</p>}
 
           {/* "Could not look", not "could not find". The server says this
@@ -180,9 +205,7 @@ export default function NearbyPlaces({ destination }) {
           {/* An empty list here is a different statement from the one above:
               we looked, and there was nothing within 500m. */}
           {!loading && !error && available && places.length === 0 && (
-            <p className="text-tfl-grey mt-2 text-sm">
-              Nothing listed within a few minutes&apos; walk.
-            </p>
+            <p className="text-tfl-grey mt-2 text-sm">Nothing listed within 1.5km.</p>
           )}
 
           {places.length > 0 && (
@@ -195,23 +218,30 @@ export default function NearbyPlaces({ destination }) {
                   {place.address && (
                     <p className="text-tfl-grey text-xs">{place.address}</p>
                   )}
-                  {place.rating && (
-                    <p className="text-tfl-grey text-xs">
-                      {place.rating.toFixed(1)}
-                      {/* The count is not decoration. A 5.0 from two people
-                          and a 4.3 from nine hundred are different claims,
-                          and only one of them is worth crossing London for. */}
-                      {place.ratings ? ` from ${place.ratings} ratings` : ''}
-                    </p>
-                  )}
+                  <p className="text-tfl-grey text-xs">
+                    {/* How far, first, because it is the thing that decides
+                        whether the rest matters. The search reaches 1.5km so
+                        that outer stations return anything at all, which
+                        means a result can be a fifteen minute walk and the
+                        row has to say so. */}
+                    {walk(place.metres)}
+                    {place.rating && place.metres ? ' · ' : ''}
+                    {place.rating ? place.rating.toFixed(1) : ''}
+                    {/* The count is not decoration. A 5.0 from two people
+                        and a 4.3 from nine hundred are different claims, and
+                        only one of them is worth crossing London for. */}
+                    {place.rating && place.ratings
+                      ? ` from ${place.ratings} ratings`
+                      : ''}
+                  </p>
                 </li>
               ))}
             </ul>
           )}
 
-          {!unavailable && (
+          {!unavailable && places.length > 0 && (
             <p className="text-tfl-grey mt-2 text-[11px]">
-              Nearest first, within 500m. From Google.
+              Nearest first, within 1.5km. Distances are straight line. From Google.
             </p>
           )}
         </div>

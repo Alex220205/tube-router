@@ -77,7 +77,7 @@ logger = logging.getLogger(__name__)
 # Versioned, as every cache key in this project is. A change to the field
 # mask or to Place changes the shape of what is stored, and a v1 reader
 # meeting a v0 entry is the bug that versioning exists to make impossible.
-PLACES_KEY = "tube-router:places:v1"
+PLACES_KEY = "tube-router:places:v2"
 STREET_VIEW_KEY = "tube-router:streetview:v1"
 
 
@@ -90,7 +90,7 @@ async def places_near(
     naptan_id: str,
     session: SessionDep,
     settings: SettingsDep,
-    kind: str = Query(default="restaurant", description="One of the five in KINDS."),
+    kind: str = Query(default="food", description="One of the five keys in KINDS."),
 ) -> PlacesResponse:
     """What is near a station.
 
@@ -98,8 +98,9 @@ async def places_near(
         naptan_id: TfL's station id, e.g. 940GZZLUHR5.
         session: Injected per request.
         settings: Injected per request.
-        kind: Category. Validated against the allow list before anything is
-            spent.
+        kind: Category - food, coffee, pubs, museums or see. Validated
+            against the allow list before anything is spent, and expanded to
+            several Google place types here rather than in the browser.
 
     Returns:
         Up to eight places, nearest first, with `available` saying whether we
@@ -146,7 +147,7 @@ async def places_near(
                 found = await client.nearby(
                     latitude=station["lat"],
                     longitude=station["lon"],
-                    kind=kind,
+                    types=KINDS[kind],
                     radius_metres=settings.google_places_radius_metres,
                     max_results=settings.google_places_max_results,
                 )

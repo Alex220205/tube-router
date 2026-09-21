@@ -56,8 +56,15 @@ class Place(BaseModel):
             "and a 4.3 from nine hundred are different claims."
         ),
     )
-    latitude: float | None = Field(default=None, description="WGS84 latitude.")
-    longitude: float | None = Field(default=None, description="WGS84 longitude.")
+    metres: int | None = Field(
+        default=None,
+        description=(
+            "Straight line distance from the station, in metres. Not a "
+            "walking distance: Google does not return one from a nearby "
+            "search, and asking for a real one is a second billed call per "
+            "result. The page labels it as straight line."
+        ),
+    )
 
 
 class PlacesResponse(BaseModel):
@@ -72,7 +79,13 @@ class PlacesResponse(BaseModel):
         )
     )
     station: str = Field(description="NaPTAN id the search was centred on.")
-    kind: str = Field(description="Which category was asked for, e.g. restaurant.")
+    kind: str = Field(
+        description=(
+            "Which category was asked for: food, coffee, pubs, museums or "
+            "see. A category, not a Google place type - each expands to "
+            "several of those server side."
+        )
+    )
     places: list[Place] = Field(
         default_factory=list,
         description="Nearest first. Empty is meaningful only when available is true.",

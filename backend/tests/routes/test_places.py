@@ -32,6 +32,8 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings, get_settings
+from app.main import app
 from app.models import Station
 
 
@@ -60,16 +62,29 @@ async def test_no_key_answers_200_with_available_false_not_an_error(
 ) -> None:
     """An absent credential is a state, not a failure.
 
-    The settings default `google_maps_key` to blank and the suite never sets
-    one, so this is the path an unconfigured deployment takes. It must be a
-    200 the page can quietly ignore.
+    It must be a 200 the page can quietly ignore, because a 500 would render
+    an error banner over a missing credential the reader can do nothing
+    about.
 
     `available: false` with an empty list is also deliberately different from
     `available: true` with an empty list. The first says we did not look; the
     second says we looked and there was nothing. Collapsing them would have
     the page claim that central London has no restaurants whenever somebody
     forgot to set a key.
+
+    THE KEY IS BLANKED EXPLICITLY, not left to the environment. The first
+    version of this test relied on nobody having set GOOGLE_MAPS_KEY, and
+    passed for exactly as long as that was true - the moment a real key
+    landed in .env it started reaching Google, and would have billed for the
+    privilege. That is the defect CODE_STYLE.md section 10 records from the
+    WebSocket tests in Phase 8b, reproduced faithfully: a suite whose meaning
+    depends on what else is configured on the machine.
     """
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        database_url="postgresql+asyncpg://unused/unused",
+        google_maps_key="",
+    )
+
     db.add(
         Station(
             naptan_id="940GZZLUHR5",
@@ -79,11 +94,14 @@ async def test_no_key_answers_200_with_available_false_not_an_error(
     )
     await db.flush()
 
-    response = await api.get("/places/940GZZLUHR5", params={"kind": "restaurant"})
+    try:
+        response = await api.get("/places/940GZZLUHR5", params={"kind": "food"})
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
 
     assert response.status_code == 200
     body = response.json()
     assert body["available"] is False
     assert body["places"] == []
     assert body["station"] == "940GZZLUHR5"
-    assert body["kind"] == "restaurant"
+    assert body["kind"] == "food"

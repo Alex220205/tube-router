@@ -135,9 +135,18 @@ class Settings(BaseSettings):
     # Total attempts including the first, as with TfL.
     google_maps_max_attempts: int = 3
 
-    # How far around the station to look. 500m is roughly a six minute walk,
-    # which is the distance at which "near the station" stops being true.
-    google_places_radius_metres: float = 500.0
+    # How far around the station to look.
+    #
+    # 1500m, not the 500m this started at. 500m is a six minute walk and is
+    # the right answer in zone 1; outside it, it is the difference between a
+    # list and an empty box. Epping within 500m has two places to eat and
+    # nothing at all to look at, and within 1500m has eight of each.
+    #
+    # Widening it costs nothing in relevance because results are ranked by
+    # distance and capped at eight, so a dense station returns the same eight
+    # it always did. It does mean a result can be a fifteen minute walk away,
+    # which is why every row now shows how far it is.
+    google_places_radius_metres: float = 1500.0
 
     # Google allows 1 to 20. Eight is a list you read rather than scroll.
     google_places_max_results: int = 8
