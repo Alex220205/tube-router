@@ -46,41 +46,35 @@ from dataclasses import dataclass
 from .types import LineId, StationId
 
 
+# line: The line ridden.
+# stations: Every station passed through, in order, including both ends.
+#     A leg of one hop has two entries.
+# seconds: Time on this line. Excludes the change that follows it -
+#     interchange time belongs to the route total, not to either leg,
+#     because it is spent walking rather than travelling.
 @dataclass(frozen=True)
 class Leg:
-    """An unbroken run on one line.
-
-    Attributes:
-        line: The line ridden.
-        stations: Every station passed through, in order, including both ends.
-            A leg of one hop has two entries.
-        seconds: Time on this line. Excludes the change that follows it -
-            interchange time belongs to the route total, not to either leg,
-            because it is spent walking rather than travelling.
-    """
+    """An unbroken run on one line."""
 
     line: LineId
     stations: tuple[StationId, ...]
     seconds: int
 
 
+# legs: One per unbroken run on a line. Empty when origin equals
+#     destination, which is a real answer rather than an error.
+# total_seconds: Riding plus changing. The sum of the legs alone would
+#     understate any journey involving a change, which is exactly the
+#     error a station-only graph makes.
+# changes: How many times you change line. Always len(legs) - 1 for a
+#     non-empty route, and kept as a field because it is the thing
+#     callers actually want to show.
+# step_free: True when every edge and interchange used is step-free.
+#     Reporting it is not the same as routing on it - routing on it is
+#     Phase 5.
 @dataclass(frozen=True)
 class Route:
-    """A journey that exists.
-
-    Attributes:
-        legs: One per unbroken run on a line. Empty when origin equals
-            destination, which is a real answer rather than an error.
-        total_seconds: Riding plus changing. The sum of the legs alone would
-            understate any journey involving a change, which is exactly the
-            error a station-only graph makes.
-        changes: How many times you change line. Always len(legs) - 1 for a
-            non-empty route, and kept as a field because it is the thing
-            callers actually want to show.
-        step_free: True when every edge and interchange used is step-free.
-            Reporting it is not the same as routing on it - routing on it is
-            Phase 5.
-    """
+    """A journey that exists."""
 
     legs: tuple[Leg, ...] = ()
     total_seconds: int = 0
@@ -88,18 +82,15 @@ class Route:
     step_free: bool = True
 
 
+# A reason rather than a bare failure, because the three cases want
+# different words in front of a user: a station that does not exist is a
+# different problem from two that are not connected.
+#
+# reason: One of "unknown_origin", "unknown_destination",
+#     "disconnected".
 @dataclass(frozen=True)
 class NoRoute:
-    """No journey exists, and why.
-
-    A reason rather than a bare failure, because the three cases want
-    different words in front of a user: a station that does not exist is a
-    different problem from two that are not connected.
-
-    Attributes:
-        reason: One of "unknown_origin", "unknown_destination",
-            "disconnected".
-    """
+    """No journey exists, and why."""
 
     reason: str
 

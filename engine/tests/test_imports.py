@@ -68,18 +68,12 @@ FORBIDDEN_STDLIB = {
 }
 
 
+# Top-level names only - `os.path` and `import os` both give `os`, which
+# is the granularity the rule is written at. Uses ast.walk rather than
+# reading module-level statements, so an import hidden inside a function
+# is found too.
 def imported_modules(path: Path) -> set[str]:
-    """Every top-level module name a file imports, relative imports excluded.
-
-    Args:
-        path: The Python file to read.
-
-    Returns:
-        Top-level names only - `os.path` and `import os` both give `os`, which
-        is the granularity the rule is written at. Uses ast.walk rather than
-        reading module-level statements, so an import hidden inside a function
-        is found too.
-    """
+    """Every top-level module name a file imports, relative imports excluded."""
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     modules: set[str] = set()
 
@@ -95,23 +89,17 @@ def imported_modules(path: Path) -> set[str]:
     return modules
 
 
+# directory: What to scan.
+# allowed: Names permitted on top of the standard library.
+# ban_io: Also reject the standard-library modules in FORBIDDEN_STDLIB.
+#     True for the package, false for the tests - this file itself needs
+#     pathlib to find the source and subprocess to run the probe, and a
+#     rule that forbade its own enforcement would be a rule nobody could
+#     keep.
 def offences(
     directory: Path, allowed: set[str], *, ban_io: bool = False
 ) -> dict[str, set[str]]:
-    """Every import under a directory that breaks the rule, by file name.
-
-    Args:
-        directory: What to scan.
-        allowed: Names permitted on top of the standard library.
-        ban_io: Also reject the standard-library modules in FORBIDDEN_STDLIB.
-            True for the package, false for the tests - this file itself needs
-            pathlib to find the source and subprocess to run the probe, and a
-            rule that forbade its own enforcement would be a rule nobody could
-            keep.
-
-    Returns:
-        File name to the offending module names. Empty when the rule holds.
-    """
+    """Every import under a directory that breaks the rule, by file name."""
     found: dict[str, set[str]] = {}
 
     for path in sorted(directory.glob("*.py")):
@@ -130,25 +118,24 @@ def offences(
     return found
 
 
+# Asserting that sqlalchemy is absent would pass a file importing django.
+# The engine has no dependencies at all, so the standard library is the
+# entire permitted surface and anything else is a finding, including a
+# package nobody has thought to forbid yet.
+#
+# The agreed rule also names `os`, which the allowlist alone would let
+# through. "It ships with Python" is not the same as "an engine with no I/O
+# may use it", so FORBIDDEN_STDLIB is rejected as well.
 def test_the_engine_imports_only_the_standard_library() -> None:
-    """An allowlist, not a blocklist, with a short blocklist inside it.
-
-    Asserting that sqlalchemy is absent would pass a file importing django.
-    The engine has no dependencies at all, so the standard library is the
-    entire permitted surface and anything else is a finding, including a
-    package nobody has thought to forbid yet.
-
-    The agreed rule also names `os`, which the allowlist alone would let
-    through. "It ships with Python" is not the same as "an engine with no I/O
-    may use it", so FORBIDDEN_STDLIB is rejected as well.
-    """
+    """An allowlist, not a blocklist, with a short blocklist inside it."""
     found = offences(PACKAGE, allowed={"tube_engine"}, ban_io=True)
 
-    assert found == {}, "\n".join(
-        f"{name} imports {module}" + _why(module)
-        for name, modules in found.items()
-        for module in sorted(modules)
-    )
+    offences_found = []
+    for name, modules in found.items():
+        for module in sorted(modules):
+            offences_found.append(f"{name} imports {module}" + _why(module))
+
+    assert found == {}, "\n".join(offences_found)
 
 
 def _why(module: str) -> str:
@@ -161,6 +148,7 @@ def _why(module: str) -> str:
 
 
 def test_the_tests_are_as_constrained_as_the_code() -> None:
+    """The tests are as constrained as the code."""
     # A suite that reached for a database would break the standalone property
     # just as completely as the package doing it, and would be easier to
     # justify at the time. pytest is the one exception, and only because the
@@ -171,6 +159,7 @@ def test_the_tests_are_as_constrained_as_the_code() -> None:
 
 
 def test_the_engine_declares_no_dependencies() -> None:
+    """The engine declares no dependencies."""
     # The scan above catches an import. This catches the step before it: a
     # dependency added to pyproject.toml and not yet used. `pip install
     # tube-engine` pulling in half a web stack would contradict the claim the
@@ -180,18 +169,16 @@ def test_the_engine_declares_no_dependencies() -> None:
     assert manifest["project"]["dependencies"] == []
 
 
+# The scans read source. This runs it: a transitive import - engine module
+# imports a helper that imports something heavy - would satisfy a per-file
+# scan and still mean `import tube_engine` pulls a database driver into
+# memory.
+#
+# In a subprocess because this process is pytest, which has imported plenty.
+# The baseline is taken inside that subprocess after interpreter startup, so
+# anything site-packages injects via a .pth file is already accounted for.
 def test_importing_the_engine_drags_in_nothing_third_party() -> None:
-    """The runtime counterpart to the static scan.
-
-    The scans read source. This runs it: a transitive import - engine module
-    imports a helper that imports something heavy - would satisfy a per-file
-    scan and still mean `import tube_engine` pulls a database driver into
-    memory.
-
-    In a subprocess because this process is pytest, which has imported plenty.
-    The baseline is taken inside that subprocess after interpreter startup, so
-    anything site-packages injects via a .pth file is already accounted for.
-    """
+    """The runtime counterpart to the static scan."""
     probe = (
         "import sys;"
         "before = set(sys.modules);"

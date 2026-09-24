@@ -174,11 +174,7 @@ class Settings(BaseSettings):
 
     @property
     def cors_origin_list(self) -> list[str]:
-        """The allowed CORS origins, split and stripped.
-
-        Returns:
-            One entry per origin. Empty entries from stray commas are dropped.
-        """
+        """The allowed CORS origins, split and stripped."""
         return [
             origin.strip() for origin in self.cors_origins.split(",") if origin.strip()
         ]
@@ -186,12 +182,8 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    """Return the application settings, reading the environment on first call.
-
-    Returns:
-        The cached Settings instance for this process.
-    """
-    return Settings()  # type: ignore[call-arg]  # populated from the environment
+    """Return the application settings, reading the environment on first call."""
+    return Settings()  # populated from the environment
 
 
 # Companion to SessionDep in database.py, so a route that needs settings

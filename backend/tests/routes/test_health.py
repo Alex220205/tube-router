@@ -15,6 +15,7 @@ from httpx import AsyncClient
 
 
 async def test_health_returns_ok_when_database_answers(client: AsyncClient) -> None:
+    """/health returns ok when the database answers."""
     response = await client.get("/health")
 
     assert response.status_code == 200
@@ -24,6 +25,7 @@ async def test_health_returns_ok_when_database_answers(client: AsyncClient) -> N
 async def test_health_reports_degraded_when_database_is_unreachable(
     client_db_down: AsyncClient,
 ) -> None:
+    """/health reports degraded when the database is unreachable."""
     response = await client_db_down.get("/health")
 
     # 200, not 500. The question is "what is your state", and refusing to
@@ -40,6 +42,7 @@ async def test_health_reports_degraded_when_database_is_unreachable(
 async def test_health_payload_has_exactly_the_documented_keys(
     client: AsyncClient,
 ) -> None:
+    """The /health payload has exactly the documented keys."""
     # The frontend renders these three fields by name. Adding a key is
     # harmless; removing or renaming one breaks it silently, so the contract
     # is pinned here rather than only in the schema.

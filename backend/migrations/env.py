@@ -62,28 +62,15 @@ POSTGIS_TABLES = {"spatial_ref_sys", "geography_columns", "geometry_columns"}
 def include_object(
     obj: Any, name: str | None, type_: str, reflected: bool, compare_to: Any
 ) -> bool:
-    """Decide whether autogenerate should consider a database object.
-
-    Args:
-        obj: The schema object being considered.
-        name: Its name, if it has one.
-        type_: What kind of object it is - "table", "column" and so on.
-        reflected: Whether it came from the database rather than the models.
-        compare_to: The corresponding object on the other side, if any.
-
-    Returns:
-        False for objects PostGIS owns, True for everything else.
-    """
+    """Decide whether autogenerate should consider a database object."""
     return not (type_ == "table" and name in POSTGIS_TABLES)
 
 
+# Used for generating a migration script to hand to a DBA. Not used here,
+# but kept because removing it would mean `alembic upgrade --sql` fails
+# with an unhelpful error rather than working.
 def run_migrations_offline() -> None:
-    """Emit SQL to stdout instead of running it against a database.
-
-    Used for generating a migration script to hand to a DBA. Not used here,
-    but kept because removing it would mean `alembic upgrade --sql` fails
-    with an unhelpful error rather than working.
-    """
+    """Emit SQL to stdout instead of running it against a database."""
     context.configure(
         url=config.get_main_option("sqlalchemy.url"),
         target_metadata=target_metadata,

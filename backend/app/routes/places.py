@@ -7,8 +7,8 @@ WHY THIS EXISTS
     arrived, what is here.
 
     It is also the only endpoint in this service that costs money per call,
-    which is why the cache and the guard clauses are the interesting parts
-    rather than the query.
+    which is why the guard clauses here, and the cache behind them in
+    services/lookups.py, are the interesting parts rather than the query.
 
 WHAT THE 2021 VERSION DID
     Where:  database[works].py, lines 239 and 276
@@ -44,43 +44,34 @@ WHAT'S NEW
     answer" - here the honest move is to say nothing at all.
 """
 
-import base64
-import logging
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Response
 from sqlalchemy.exc import OperationalError
 
-from app.core import cache
 from app.core.config import SettingsDep
 from app.core.database import SessionDep
 from app.routes import COMMON_RESPONSES
-from app.schemas.places import Place, PlacesResponse
+from app.schemas.places import PlacesResponse
+from app.services import lookups
 from app.services import stations as station_service
-from app.services.places import KINDS, GoogleMapsClient, PlacesError
+from app.services.places import KINDS, PlacesError
 
 router = APIRouter(prefix="/places", tags=["places"])
 
-# The only logger in the backend, and it earns its place.
+
+# naptan_id: TfL's station id, e.g. 940GZZLUHR5.
+# session: Injected per request.
+# settings: Injected per request.
+# kind: Category - food, coffee, pubs, museums or see. Validated
+#     against the allow list before anything is spent, and expanded to
+#     several Google place types here rather than in the browser.
 #
-# Everything else here either answers or raises, so a failure is visible.
-# This module is the exception: when Google refuses, the endpoint returns
-# `available: false` and the page quietly shows one line - which is right for
-# the reader and leaves the operator with no way to tell "no key" from "bad
-# key" from "Google is down". All three look identical from outside.
+# Up to eight places, nearest first, with `available` saying whether we
+# were able to look at all.
 #
-# That is not the same trade core/cache.py makes. A swallowed Redis error
-# still produces the correct answer from the source, so there is nothing to
-# investigate. A swallowed 401 means a feature is off and nobody can say why,
-# which cost two rounds of diagnosis to establish by hand.
-logger = logging.getLogger(__name__)
-
-# Versioned, as every cache key in this project is. A change to the field
-# mask or to Place changes the shape of what is stored, and a v1 reader
-# meeting a v0 entry is the bug that versioning exists to make impossible.
-PLACES_KEY = "tube-router:places:v2"
-STREET_VIEW_KEY = "tube-router:streetview:v1"
-
-
+# HTTPException: 400 for an unknown kind, 404 for an unknown station,
+#     503 if the database is unreachable.
 @router.get(
     "/{naptan_id}",
     response_model=PlacesResponse,
@@ -90,26 +81,9 @@ async def places_near(
     naptan_id: str,
     session: SessionDep,
     settings: SettingsDep,
-    kind: str = Query(default="food", description="One of the five keys in KINDS."),
+    kind: Annotated[str, Query(description="One of the five keys in KINDS.")] = "food",
 ) -> PlacesResponse:
-    """What is near a station.
-
-    Args:
-        naptan_id: TfL's station id, e.g. 940GZZLUHR5.
-        session: Injected per request.
-        settings: Injected per request.
-        kind: Category - food, coffee, pubs, museums or see. Validated
-            against the allow list before anything is spent, and expanded to
-            several Google place types here rather than in the browser.
-
-    Returns:
-        Up to eight places, nearest first, with `available` saying whether we
-        were able to look at all.
-
-    Raises:
-        HTTPException: 400 for an unknown kind, 404 for an unknown station,
-            503 if the database is unreachable.
-    """
+    """What is near a station."""
     try:
         # Guard clauses before the database, and the database before Google.
         # Each step is more expensive than the one above it, and the last one
@@ -124,54 +98,7 @@ async def places_near(
         if station is None:
             raise HTTPException(status_code=404, detail=f"No station {naptan_id}")
 
-        empty = PlacesResponse(available=False, station=naptan_id, kind=kind)
-
-        # No key is a state, not an error. The whole feature is optional and
-        # the project has to run for someone who has not got one.
-        if not settings.google_maps_key:
-            return empty
-
-        cache_key = f"{PLACES_KEY}:{naptan_id}:{kind}"
-        cached = await cache.read_json(cache_key)
-        if cached is not None:
-            return PlacesResponse(**cached)
-
-        async with GoogleMapsClient(
-            places_base_url=settings.google_places_base_url,
-            street_view_base_url=settings.google_street_view_base_url,
-            api_key=settings.google_maps_key,
-            timeout_seconds=settings.google_maps_timeout_seconds,
-            max_attempts=settings.google_maps_max_attempts,
-        ) as client:
-            try:
-                found = await client.nearby(
-                    latitude=station["lat"],
-                    longitude=station["lon"],
-                    types=KINDS[kind],
-                    radius_metres=settings.google_places_radius_metres,
-                    max_results=settings.google_places_max_results,
-                )
-            except PlacesError as exc:
-                # Google being down is not this service being down. The route
-                # is already on the page; this is an extra that goes quiet -
-                # quiet on the page, and loud in the log, because the two
-                # audiences need opposite things here.
-                logger.warning("places lookup failed for %s: %s", naptan_id, exc)
-                return empty
-
-        answer = PlacesResponse(
-            available=True,
-            station=naptan_id,
-            kind=kind,
-            # A place with no name is not worth a row.
-            places=[Place(**vars(p)) for p in found if p.name],
-        )
-        await cache.write_json(
-            cache_key,
-            answer.model_dump(),
-            ttl_seconds=settings.google_places_cache_ttl_seconds,
-        )
-        return answer
+        return await lookups.places_near(settings, naptan_id, station, kind)
 
     except HTTPException:
         raise
@@ -183,6 +110,13 @@ async def places_near(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+# 404 rather than an empty 200, because unlike the list above there is no
+# useful "we looked and found nothing" image to send. The page treats a
+# failed image the way any page treats one: it shows nothing. The `<img>`
+# never reaches the user's eye and nothing has to be explained.
+#
+# HTTPException: 404 for an unknown station and for a station Google
+#     has no imagery for, 503 if the database is unreachable.
 @router.get(
     "/{naptan_id}/streetview",
     responses={
@@ -193,25 +127,7 @@ async def places_near(
 async def street_view(
     naptan_id: str, session: SessionDep, settings: SettingsDep
 ) -> Response:
-    """A photograph of the street outside a station.
-
-    Args:
-        naptan_id: TfL's station id.
-        session: Injected per request.
-        settings: Injected per request.
-
-    Returns:
-        A JPEG.
-
-    Raises:
-        HTTPException: 404 for an unknown station and for a station Google
-            has no imagery for, 503 if the database is unreachable.
-
-    404 rather than an empty 200, because unlike the list above there is no
-    useful "we looked and found nothing" image to send. The page treats a
-    failed image the way any page treats one: it shows nothing. The `<img>`
-    never reaches the user's eye and nothing has to be explained.
-    """
+    """A photograph of the street outside a station."""
     try:
         station = await station_service.coordinates_for_naptan(session, naptan_id)
         if station is None:
@@ -220,42 +136,18 @@ async def street_view(
         if not settings.google_maps_key:
             raise HTTPException(status_code=404, detail="Street view is not configured")
 
-        cache_key = f"{STREET_VIEW_KEY}:{naptan_id}"
-        cached = await cache.read_json(cache_key)
-        if cached is not None:
-            # Stored base64 because Redis holds text and the cache helper
-            # speaks JSON. A 400x200 JPEG is about 20KB, so a third more in
-            # Redis is a trade worth making to reuse the helper rather than
-            # add a bytes path to it for one caller.
-            return _jpeg(base64.b64decode(cached))
-
-        async with GoogleMapsClient(
-            places_base_url=settings.google_places_base_url,
-            street_view_base_url=settings.google_street_view_base_url,
-            api_key=settings.google_maps_key,
-            timeout_seconds=settings.google_maps_timeout_seconds,
-            max_attempts=settings.google_maps_max_attempts,
-        ) as client:
-            try:
-                image = await client.street_view(
-                    latitude=station["lat"], longitude=station["lon"]
-                )
-            except PlacesError as exc:
-                logger.warning("street view failed for %s: %s", naptan_id, exc)
-                raise HTTPException(
-                    status_code=404, detail="Street view unavailable"
-                ) from exc
+        try:
+            image = await lookups.street_view_of(settings, naptan_id, station)
+        except PlacesError as exc:
+            raise HTTPException(
+                status_code=404, detail="Street view unavailable"
+            ) from exc
 
         if image is None:
             # No panorama there. Ordinary, and not a failure: plenty of
             # station entrances have never been driven past.
             raise HTTPException(status_code=404, detail="No imagery for this station")
 
-        await cache.write_json(
-            cache_key,
-            base64.b64encode(image).decode("ascii"),
-            ttl_seconds=settings.google_street_view_cache_ttl_seconds,
-        )
         return _jpeg(image)
 
     except HTTPException:
@@ -268,13 +160,11 @@ async def street_view(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+# A station entrance does not move, so the browser may hold it as long as
+# Redis does. Without this the image is re-fetched from us on every open,
+# which costs nothing in money and everything in feeling slow.
 def _jpeg(image: bytes) -> Response:
-    """The image, with a cache header matching how long we keep it ourselves.
-
-    A station entrance does not move, so the browser may hold it as long as
-    Redis does. Without this the image is re-fetched from us on every open,
-    which costs nothing in money and everything in feeling slow.
-    """
+    """The image, with a cache header matching how long we keep it ourselves."""
     return Response(
         content=image,
         media_type="image/jpeg",

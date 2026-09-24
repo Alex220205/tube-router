@@ -37,17 +37,12 @@ router = APIRouter(prefix="/lines", tags=["lines"])
     responses={**COMMON_RESPONSES, 200: {"description": "OK"}},
 )
 async def list_lines(session: SessionDep) -> list[LinePublic]:
-    """Every line, ordered by name.
-
-    Args:
-        session: Injected per request.
-
-    Returns:
-        All eleven tube lines with their colours.
-    """
+    """Every line, ordered by name."""
     try:
         return [LinePublic(**row) for row in await station_service.list_lines(session)]
     except OperationalError as exc:
         raise HTTPException(
             status_code=503, detail="Database temporarily unavailable"
         ) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

@@ -58,6 +58,9 @@ from sqlalchemy import cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import cache
+
+# Aliased because this file holds both halves of the boundary: the table rows
+# read from Postgres and the engine types built from them share two names.
 from app.models import Interchange as InterchangeRow
 from app.models import Line, Segment, StationLine
 from app.models import Station as StationRow
@@ -97,22 +100,16 @@ _checked_at = 0.0
 GENERATION_CHECK_SECONDS = 5.0
 
 
+# Built on first use rather than at startup. Phase 0 established that a
+# degraded database must not stop the API serving - /health reports
+# `degraded` with a 200 and the frontend renders it - and building here at
+# boot would undo that, failing the container whenever Postgres was slow
+# and taking down the one page whose job is to say "database unreachable".
+#
+# The shared Network. The same object every time, which callers may
+# rely on because nothing can modify it.
 async def get_network(session: AsyncSession) -> Network:
-    """The routing graph, built once per process.
-
-    Built on first use rather than at startup. Phase 0 established that a
-    degraded database must not stop the API serving - /health reports
-    `degraded` with a 200 and the frontend renders it - and building here at
-    boot would undo that, failing the container whenever Postgres was slow
-    and taking down the one page whose job is to say "database unreachable".
-
-    Args:
-        session: Used only if the graph has to be built.
-
-    Returns:
-        The shared Network. The same object every time, which callers may
-        rely on because nothing can modify it.
-    """
+    """The routing graph, built once per process."""
     global _network, _generation, _checked_at
 
     # Fast path, and the only one most requests take. _is_stale rate-limits
@@ -141,15 +138,12 @@ async def get_network(session: AsyncSession) -> Network:
         return _network
 
 
+# True only on a definite mismatch. An unreachable Redis returns None,
+# which is treated as "no news" and keeps the current graph - rebuilding
+# on every request because the cache is down is how a degraded
+# dependency becomes an outage.
 async def _is_stale() -> bool:
-    """Whether the built graph is older than the generation Redis reports.
-
-    Returns:
-        True only on a definite mismatch. An unreachable Redis returns None,
-        which is treated as "no news" and keeps the current graph - rebuilding
-        on every request because the cache is down is how a degraded
-        dependency becomes an outage.
-    """
+    """Whether the built graph is older than the generation Redis reports."""
     global _checked_at
 
     now = time.monotonic()
@@ -163,28 +157,20 @@ async def _is_stale() -> bool:
     return generation != _generation
 
 
+# For tests. A reseed does not need this - it bumps the generation key and
+# every running process notices within GENERATION_CHECK_SECONDS.
 def forget() -> None:
-    """Drop the in-process graph so the next request rebuilds it.
-
-    For tests. A reseed does not need this - it bumps the generation key and
-    every running process notices within GENERATION_CHECK_SECONDS.
-    """
+    """Drop the in-process graph so the next request rebuilds it."""
     global _network, _generation, _checked_at
     _network = None
     _generation = None
     _checked_at = 0.0
 
 
+# A freshly built Network. get_network is what request handlers want;
+# this is for tests and for anything that must see current data.
 async def load_network(session: AsyncSession) -> Network:
-    """Build the routing graph from the database, ignoring every cache.
-
-    Args:
-        session: An open async session. Read only; nothing here writes.
-
-    Returns:
-        A freshly built Network. get_network is what request handlers want;
-        this is for tests and for anything that must see current data.
-    """
+    """Build the routing graph from the database, ignoring every cache."""
     return network_from_rows(await read_rows(session))
 
 
@@ -215,45 +201,34 @@ def network_from_rows(rows: dict[str, Any]) -> Network:
     )
 
 
+# Five queries rather than one join. The engine wants whole collections, not
+# a row-per-combination, and joining would return every station once per
+# line it serves - which is exactly the shape the 2021 schema had and the
+# reason it deduplicated by name string on every search.
+#
+# Lists rather than dicts, because this goes into Redis and the field names
+# would be about 60% of the payload.
+#
+# Stations, edges, interchanges and step-free platforms, keyed by
+# NaPTAN id and TfL line code. Those are the identifiers that mean
+# something outside this database, so a Route can be rendered without a
+# second lookup to translate integers back.
 async def read_rows(session: AsyncSession) -> dict[str, Any]:
-    """Read everything the graph is built from, as plain JSON-safe values.
-
-    Five queries rather than one join. The engine wants whole collections, not
-    a row-per-combination, and joining would return every station once per
-    line it serves - which is exactly the shape the 2021 schema had and the
-    reason it deduplicated by name string on every search.
-
-    Lists rather than dicts, because this goes into Redis and the field names
-    would be about 60% of the payload.
-
-    Args:
-        session: An open async session. Read only; nothing here writes.
-
-    Returns:
-        Stations, edges, interchanges and step-free platforms, keyed by
-        NaPTAN id and TfL line code. Those are the identifiers that mean
-        something outside this database, so a Route can be rendered without a
-        second lookup to translate integers back.
-    """
+    """Read everything the graph is built from, as plain JSON-safe values."""
     line_codes = {row.id: row.code for row in await session.scalars(select(Line))}
-
-    # location is geography(Point, 4326), which is not a float pair, so the
-    # coordinates are unpacked in SQL. ST_X is longitude and ST_Y is latitude
-    # - backwards to anyone thinking "lat, lon", and getting it wrong puts
-    # every station in the Indian Ocean without raising anything.
-    geometry = cast(StationRow.location, Geometry)
-    station_rows = (
-        await session.execute(
-            select(
-                StationRow.id,
-                StationRow.naptan_id,
-                StationRow.name,
-                func.ST_Y(geometry).label("lat"),
-                func.ST_X(geometry).label("lon"),
-            )
-        )
-    ).all()
+    station_rows = await _station_rows(session)
     naptan = {row.id: row.naptan_id for row in station_rows}
+
+    segments = await session.scalars(select(Segment))
+    interchanges = await session.scalars(select(InterchangeRow))
+    platforms = await session.scalars(select(StationLine))
+
+    step_free_platforms = []
+    for row in platforms:
+        if row.step_free_to_platform:
+            step_free_platforms.append(
+                [naptan[row.station_id], line_codes[row.line_id]]
+            )
 
     return {
         "stations": [
@@ -266,7 +241,7 @@ async def read_rows(session: AsyncSession) -> dict[str, Any]:
                 line_codes[row.line_id],
                 row.seconds,
             ]
-            for row in await session.scalars(select(Segment))
+            for row in segments
         ],
         "interchanges": [
             [
@@ -276,11 +251,26 @@ async def read_rows(session: AsyncSession) -> dict[str, Any]:
                 row.seconds,
                 row.step_free,
             ]
-            for row in await session.scalars(select(InterchangeRow))
+            for row in interchanges
         ],
-        "step_free_platforms": [
-            [naptan[row.station_id], line_codes[row.line_id]]
-            for row in await session.scalars(select(StationLine))
-            if row.step_free_to_platform
-        ],
+        "step_free_platforms": step_free_platforms,
     }
+
+
+# location is geography(Point, 4326), which is not a float pair, so the
+# coordinates are unpacked in SQL. ST_X is longitude and ST_Y is latitude -
+# backwards to anyone thinking "lat, lon", and getting it wrong puts every
+# station in the Indian Ocean without raising anything.
+async def _station_rows(session: AsyncSession) -> list[Any]:
+    """Every station with its coordinates already unpacked."""
+    geometry = cast(StationRow.location, Geometry)
+    result = await session.execute(
+        select(
+            StationRow.id,
+            StationRow.naptan_id,
+            StationRow.name,
+            func.ST_Y(geometry).label("lat"),
+            func.ST_X(geometry).label("lon"),
+        )
+    )
+    return list(result.all())

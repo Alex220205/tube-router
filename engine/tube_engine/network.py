@@ -62,6 +62,20 @@ from .types import Edge, Interchange, LineId, Station, StationId
 class Network:
     """An immutable graph of stations, rides and changes."""
 
+    # Every question the search asks is answered from a dict built here, so
+    # this is the only place that iterates the raw collections.
+    #
+    # stations: Every station. Later duplicates of an id overwrite
+    #     earlier ones rather than erroring - the caller is responsible
+    #     for its own uniqueness, and the schema already enforces it.
+    # edges: Every directional ride.
+    # interchanges: Every directional change.
+    # step_free_platforms: Which (station, line) platforms can be
+    #     reached step-free from the street. Defaults to none, so a
+    #     network built without it answers "not step-free" to
+    #     everything rather than claiming access it was never told
+    #     about - the safe direction, since the failure that strands
+    #     someone is claiming access that is not there.
     def __init__(
         self,
         stations: Iterable[Station],
@@ -69,24 +83,7 @@ class Network:
         interchanges: Iterable[Interchange],
         step_free_platforms: Iterable[tuple[StationId, LineId]] = (),
     ) -> None:
-        """Index the network for lookup.
-
-        Every question the search asks is answered from a dict built here, so
-        this is the only place that iterates the raw collections.
-
-        Args:
-            stations: Every station. Later duplicates of an id overwrite
-                earlier ones rather than erroring - the caller is responsible
-                for its own uniqueness, and the schema already enforces it.
-            edges: Every directional ride.
-            interchanges: Every directional change.
-            step_free_platforms: Which (station, line) platforms can be
-                reached step-free from the street. Defaults to none, so a
-                network built without it answers "not step-free" to
-                everything rather than claiming access it was never told
-                about - the safe direction, since the failure that strands
-                someone is claiming access that is not there.
-        """
+        """Index the network for lookup."""
         self._stations: dict[StationId, Station] = {s.id: s for s in stations}
         self._step_free: frozenset[tuple[StationId, LineId]] = frozenset(
             step_free_platforms
@@ -128,83 +125,44 @@ class Network:
         """How many stations the network holds."""
         return len(self._stations)
 
+    # KeyError: If no such station exists. Raising rather than returning
+    #     None because callers here have already checked membership -
+    #     find_route returns NoRoute("unknown_origin") long before this
+    #     is reached, so a KeyError means a genuine bug rather than
+    #     ordinary missing input.
     def station(self, station_id: StationId) -> Station:
-        """Look up one station.
-
-        Args:
-            station_id: The id to find.
-
-        Returns:
-            The station.
-
-        Raises:
-            KeyError: If no such station exists. Raising rather than returning
-                None because callers here have already checked membership -
-                find_route returns NoRoute("unknown_origin") long before this
-                is reached, so a KeyError means a genuine bug rather than
-                ordinary missing input.
-        """
+        """Look up one station."""
         return self._stations[station_id]
 
+    # The edges, as a tuple. Empty for a terminus or an unknown station
+    # - an empty result is the correct answer to "what leaves from
+    # here", so this does not raise.
     def edges_from(self, station_id: StationId) -> tuple[Edge, ...]:
-        """Every ride departing from a station.
-
-        Args:
-            station_id: Where to depart from.
-
-        Returns:
-            The edges, as a tuple. Empty for a terminus or an unknown station
-            - an empty result is the correct answer to "what leaves from
-            here", so this does not raise.
-        """
+        """Every ride departing from a station."""
         return self._edges.get(station_id, ())
 
     def interchanges_at(self, station_id: StationId) -> tuple[Interchange, ...]:
-        """Every line change available at a station.
-
-        Args:
-            station_id: Where the change would happen.
-
-        Returns:
-            The interchanges, as a tuple. Empty where only one line calls.
-        """
+        """Every line change available at a station."""
         return self._interchanges.get(station_id, ())
 
+    # Used to seed the search: standing at the origin you are not yet on any
+    # line, so every line serving it is a possible starting node.
     def lines_at(self, station_id: StationId) -> frozenset[LineId]:
-        """Which lines serve a station.
-
-        Used to seed the search: standing at the origin you are not yet on any
-        line, so every line serving it is a possible starting node.
-
-        Args:
-            station_id: The station.
-
-        Returns:
-            The line ids. Empty for an unknown or unconnected station.
-        """
+        """Which lines serve a station."""
         return self._lines.get(station_id, frozenset())
 
+    # True only where the caller said so. Green Park is step-free on the
+    # Victoria line and not on the Piccadilly, which is why this takes a
+    # line and a station rather than just a station.
     def step_free_at(self, station_id: StationId, line: LineId) -> bool:
-        """Whether this platform can be reached step-free from the street.
-
-        Args:
-            station_id: The station.
-            line: The line whose platform is being asked about.
-
-        Returns:
-            True only where the caller said so. Green Park is step-free on the
-            Victoria line and not on the Piccadilly, which is why this takes a
-            line and a station rather than just a station.
-        """
+        """Whether this platform can be reached step-free from the street."""
         return (station_id, line) in self._step_free
 
+    # Used to seed a step-free search, the way lines_at seeds an ordinary
+    # one: you can only start a step-free journey from a platform you can
+    # actually reach.
     def step_free_lines_at(self, station_id: StationId) -> frozenset[LineId]:
-        """The lines at a station whose platforms are step-free.
-
-        Used to seed a step-free search, the way lines_at seeds an ordinary
-        one: you can only start a step-free journey from a platform you can
-        actually reach.
-        """
+        """The lines at a station whose platforms are step-free."""
         return frozenset(
             line
             for line in self.lines_at(station_id)
@@ -221,28 +179,25 @@ class Network:
         for interchanges in self._interchanges.values():
             yield from interchanges
 
+    # **Rides are kept, all of them.** You need no accessible route at a
+    # station you stay on the train through, so filtering rides by the
+    # accessibility of their endpoints removes journeys that are perfectly
+    # possible - it left 123 of 754 real rides and broke the accessible
+    # network into fragments. What a step-free journey actually requires is
+    # an accessible origin platform, accessible changes, and an accessible
+    # destination platform. The changes are filtered here; the two ends are
+    # the search's business, because only it knows where they are.
+    #
+    # Every station is kept too. Dropping them would turn "you cannot get to
+    # Epping step-free" into NoRoute("unknown_destination"), which is the
+    # engine claiming a real station does not exist. The honest answer is
+    # "disconnected".
+    #
+    # A new Network. This one is untouched - the filters are the reason
+    # immutability was built in Phase 4, since a filter that edited in
+    # place would make the graph depend on which query ran last.
     def step_free_only(self) -> "Network":
-        """A network whose every change can be made step-free.
-
-        **Rides are kept, all of them.** You need no accessible route at a
-        station you stay on the train through, so filtering rides by the
-        accessibility of their endpoints removes journeys that are perfectly
-        possible - it left 123 of 754 real rides and broke the accessible
-        network into fragments. What a step-free journey actually requires is
-        an accessible origin platform, accessible changes, and an accessible
-        destination platform. The changes are filtered here; the two ends are
-        the search's business, because only it knows where they are.
-
-        Every station is kept too. Dropping them would turn "you cannot get to
-        Epping step-free" into NoRoute("unknown_destination"), which is the
-        engine claiming a real station does not exist. The honest answer is
-        "disconnected".
-
-        Returns:
-            A new Network. This one is untouched - the filters are the reason
-            immutability was built in Phase 4, since a filter that edited in
-            place would make the graph depend on which query ran last.
-        """
+        """A network whose every change can be made step-free."""
         return Network(
             stations=self._stations.values(),
             edges=self._all_edges(),
@@ -254,23 +209,19 @@ class Network:
             step_free_platforms=self._step_free,
         )
 
+    # An interchange goes if **either** side names an excluded line. Changing
+    # from the Victoria to a suspended Central is not possible just because
+    # the Victoria is running, and filtering on from_line alone would leave
+    # changes that strand you on a line that is not moving.
+    #
+    # lines: Line ids to remove. Unknown ids are ignored rather than
+    #     raising - "avoid the Bakerloo" is a reasonable thing to ask of
+    #     a network that has no Bakerloo.
+    #
+    # A new Network, or this one unchanged when nothing was excluded.
+    # Returning self is safe precisely because nothing here mutates.
     def without_lines(self, lines: Iterable[LineId]) -> "Network":
-        """A network with the named lines removed entirely.
-
-        An interchange goes if **either** side names an excluded line. Changing
-        from the Victoria to a suspended Central is not possible just because
-        the Victoria is running, and filtering on from_line alone would leave
-        changes that strand you on a line that is not moving.
-
-        Args:
-            lines: Line ids to remove. Unknown ids are ignored rather than
-                raising - "avoid the Bakerloo" is a reasonable thing to ask of
-                a network that has no Bakerloo.
-
-        Returns:
-            A new Network, or this one unchanged when nothing was excluded.
-            Returning self is safe precisely because nothing here mutates.
-        """
+        """A network with the named lines removed entirely."""
         excluded = frozenset(lines)
         if not excluded:
             return self
@@ -287,44 +238,41 @@ class Network:
             step_free_platforms=self._step_free,
         )
 
+    # TfL's status feed distinguishes a line that is shut from a line that
+    # is shut *between two places*, and `without_lines` cannot express the
+    # second. Removing the whole District because it is closed west of
+    # Earl's Court costs a traveller the entire eastern half of a line that
+    # is running normally.
+    #
+    # **An edge goes only when BOTH of its ends are closed.** That is not a
+    # detail, it is the whole rule. TfL lists the boundary stations as
+    # affected: Earl's Court appears in the District's closure because the
+    # closure starts there, but District trains still call at Earl's Court
+    # from the east. Dropping every edge that merely touches a closed
+    # station would sever Earl's Court to Gloucester Road, which is running.
+    #
+    # Interchanges are left alone on purpose. A station in the middle of a
+    # closure becomes unreachable on that line anyway, because every edge
+    # into it has gone, and a change nobody can arrive at costs nothing.
+    # Removing them would also strand the boundary stations, which are still
+    # served from the other side.
+    #
+    # closures: Line id to the stations that line does not serve. Comes
+    #     from TfL's `affectedStops`, so the ids are NaPTAN and match
+    #     Station.id directly.
+    #
+    # A new Network with those rides gone, or this one unchanged when
+    # nothing was closed.
     def without_closed_sections(
         self, closures: Mapping[LineId, AbstractSet[StationId]]
     ) -> "Network":
-        """A network with only the closed stretch of each line removed.
-
-        TfL's status feed distinguishes a line that is shut from a line that
-        is shut *between two places*, and `without_lines` cannot express the
-        second. Removing the whole District because it is closed west of
-        Earl's Court costs a traveller the entire eastern half of a line that
-        is running normally.
-
-        Args:
-            closures: Line id to the stations that line does not serve. Comes
-                from TfL's `affectedStops`, so the ids are NaPTAN and match
-                Station.id directly.
-
-        Returns:
-            A new Network with those rides gone, or this one unchanged when
-            nothing was closed.
-
-        **An edge goes only when BOTH of its ends are closed.** That is not a
-        detail, it is the whole rule. TfL lists the boundary stations as
-        affected: Earl's Court appears in the District's closure because the
-        closure starts there, but District trains still call at Earl's Court
-        from the east. Dropping every edge that merely touches a closed
-        station would sever Earl's Court to Gloucester Road, which is running.
-
-        Interchanges are left alone on purpose. A station in the middle of a
-        closure becomes unreachable on that line anyway, because every edge
-        into it has gone, and a change nobody can arrive at costs nothing.
-        Removing them would also strand the boundary stations, which are still
-        served from the other side.
-        """
+        """A network with only the closed stretch of each line removed."""
         closed = {line: frozenset(stops) for line, stops in closures.items() if stops}
         if not closed:
             return self
 
         def open_section(edge: Edge) -> bool:
+            """Whether this edge lies outside every closed stretch."""
             stops = closed.get(edge.line)
             if stops is None:
                 return True

@@ -43,14 +43,12 @@ DEFAULT_SEARCH_LIMIT = 50
 MAX_SEARCH_LIMIT = 200
 
 
+# ST_X is longitude and ST_Y is latitude. That reads backwards to anyone
+# thinking in "lat, lon" order, and swapping them puts every station in the
+# Indian Ocean without raising anything - so the conversion lives here once
+# instead of at each call site.
 def _station_columns() -> Select:
-    """Select a station with its coordinates already unpacked.
-
-    ST_X is longitude and ST_Y is latitude. That reads backwards to anyone
-    thinking in "lat, lon" order, and swapping them puts every station in the
-    Indian Ocean without raising anything - so the conversion lives here once
-    instead of at each call site.
-    """
+    """Select a station with its coordinates already unpacked."""
     geometry = cast(Station.location, Geometry)
     return select(
         Station.id,
@@ -62,25 +60,19 @@ def _station_columns() -> Select:
     )
 
 
+# Substring rather than prefix, because names are stored exactly as TfL
+# gives them - "Oxford Circus Underground Station" has to be findable by
+# typing either "oxford" or "circus".
+#
+# session: Database session.
+# query: What the user typed. None or blank returns everything, up to
+#     the limit: the search box's first render is empty and erroring
+#     there would be noise.
+# limit: Maximum rows. Clamped to MAX_SEARCH_LIMIT.
 async def search_stations(
     session: AsyncSession, query: str | None = None, limit: int = DEFAULT_SEARCH_LIMIT
 ) -> list[dict]:
-    """Find stations whose name contains the query.
-
-    Substring rather than prefix, because names are stored exactly as TfL
-    gives them - "Oxford Circus Underground Station" has to be findable by
-    typing either "oxford" or "circus".
-
-    Args:
-        session: Database session.
-        query: What the user typed. None or blank returns everything, up to
-            the limit: the search box's first render is empty and erroring
-            there would be noise.
-        limit: Maximum rows. Clamped to MAX_SEARCH_LIMIT.
-
-    Returns:
-        Station rows as dicts, ordered by name.
-    """
+    """Find stations whose name contains the query."""
     statement = _station_columns()
 
     if query and query.strip():
@@ -95,18 +87,11 @@ async def search_stations(
     return [dict(row) for row in result.mappings()]
 
 
+# The station as a dict with `lines` and `complex_name`, or None if no
+# such station exists. None rather than raising, so the handler decides
+# what a missing station means in HTTP terms.
 async def get_station(session: AsyncSession, station_id: int) -> dict | None:
-    """Fetch one station with the lines serving it and its complex.
-
-    Args:
-        session: Database session.
-        station_id: Surrogate primary key.
-
-    Returns:
-        The station as a dict with `lines` and `complex_name`, or None if no
-        such station exists. None rather than raising, so the handler decides
-        what a missing station means in HTTP terms.
-    """
+    """Fetch one station with the lines serving it and its complex."""
     result = await session.execute(_station_columns().where(Station.id == station_id))
     row = result.mappings().first()
     if row is None:
@@ -135,23 +120,16 @@ async def get_station(session: AsyncSession, station_id: int) -> dict | None:
     return station
 
 
+# A dict rather than a (lat, lon) tuple on purpose. The one thing that goes
+# wrong with coordinates in this codebase is the order, which is why
+# _station_columns exists at all, and a tuple is two unlabelled floats that
+# can be unpacked backwards without anything raising.
+#
+# A dict with `naptan_id`, `name`, `lat` and `lon`, or None if no such
+# station exists. None rather than raising, as with get_station: the
+# handler decides what a missing station means in HTTP terms.
 async def coordinates_for_naptan(session: AsyncSession, naptan_id: str) -> dict | None:
-    """Where a station is, looked up by its TfL id.
-
-    Args:
-        session: Database session.
-        naptan_id: TfL's own station id, e.g. 940GZZLUHR5.
-
-    Returns:
-        A dict with `naptan_id`, `name`, `lat` and `lon`, or None if no such
-        station exists. None rather than raising, as with get_station: the
-        handler decides what a missing station means in HTTP terms.
-
-    A dict rather than a (lat, lon) tuple on purpose. The one thing that goes
-    wrong with coordinates in this codebase is the order, which is why
-    _station_columns exists at all, and a tuple is two unlabelled floats that
-    can be unpacked backwards without anything raising.
-    """
+    """Where a station is, looked up by its TfL id."""
     result = await session.execute(
         select(
             Station.naptan_id,
@@ -164,29 +142,18 @@ async def coordinates_for_naptan(session: AsyncSession, naptan_id: str) -> dict 
     return dict(row) if row else None
 
 
+# `<->` is the KNN operator and it is what makes this "nearest" rather than
+# "sorted by a distance somebody calculated". At 272 rows the GIST index
+# Phase 1 built for this saves no measurable time - a sequential scan would
+# be instant - but the operator is the one that expresses the question, and
+# the alternative is pulling every station into Python to sort it.
+#
+# ST_MakePoint takes longitude FIRST. Reversed, every answer is a station
+# in the Indian Ocean, sorted correctly.
 async def nearest_to(
     session: AsyncSession, latitude: float, longitude: float, limit: int = 3
 ) -> list[dict]:
-    """The stations closest to a point on the ground.
-
-    Args:
-        session: Database session.
-        latitude: WGS84.
-        longitude: WGS84.
-        limit: How many to return.
-
-    Returns:
-        Dicts of `naptan_id`, `name` and `metres`, nearest first.
-
-    `<->` is the KNN operator and it is what makes this "nearest" rather than
-    "sorted by a distance somebody calculated". At 272 rows the GIST index
-    Phase 1 built for this saves no measurable time - a sequential scan would
-    be instant - but the operator is the one that expresses the question, and
-    the alternative is pulling every station into Python to sort it.
-
-    ST_MakePoint takes longitude FIRST. Reversed, every answer is a station
-    in the Indian Ocean, sorted correctly.
-    """
+    """The stations closest to a point on the ground."""
     point = cast(
         func.ST_SetSRID(func.ST_MakePoint(longitude, latitude), 4326), Geography
     )
@@ -206,13 +173,10 @@ async def nearest_to(
     ]
 
 
+# Line rows as dicts. `mode` is the enum's value, not its name, so the
+# response says "tube" rather than "TUBE".
 async def list_lines(session: AsyncSession) -> list[dict]:
-    """Every line, ordered by name.
-
-    Returns:
-        Line rows as dicts. `mode` is the enum's value, not its name, so the
-        response says "tube" rather than "TUBE".
-    """
+    """Every line, ordered by name."""
     result = await session.execute(
         select(Line.id, Line.code, Line.name, Line.colour, Line.mode).order_by(
             Line.name
@@ -221,19 +185,16 @@ async def list_lines(session: AsyncSession) -> list[dict]:
     return [{**row, "mode": row["mode"].value} for row in result.mappings()]
 
 
+# Whole rather than paginated: a map cannot draw a partial network, so a
+# page of it is not useful to anybody. Roughly 272 stations and 754
+# segments - a few hundred KB. It becomes a Redis cache candidate in Phase
+# 6 alongside the built engine Network, not before.
+#
+# A dict with `stations`, `segments` and `lines`. Segments carry station
+# ids rather than nested stations, so the client joins them once instead
+# of the payload repeating every station up to a dozen times.
 async def get_network(session: AsyncSession) -> dict:
-    """Every station, segment and line in one payload.
-
-    Whole rather than paginated: a map cannot draw a partial network, so a
-    page of it is not useful to anybody. Roughly 272 stations and 754
-    segments - a few hundred KB. It becomes a Redis cache candidate in Phase
-    6 alongside the built engine Network, not before.
-
-    Returns:
-        A dict with `stations`, `segments` and `lines`. Segments carry station
-        ids rather than nested stations, so the client joins them once instead
-        of the payload repeating every station up to a dozen times.
-    """
+    """Every station, segment and line in one payload."""
     # Step-free is per (station, line) in the database, because a platform is
     # what is accessible or not - the Jubilee at Westminster is step-free and
     # the District at the same station is not. The map draws one marker per

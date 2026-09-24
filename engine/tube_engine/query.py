@@ -35,42 +35,37 @@ from enum import Enum
 from .types import LineId, StationId
 
 
+# Each member arrived in the phase that implemented it. Shipping one that
+# raised NotImplementedError would advertise something that does not work,
+# and a caller has no way to tell the two apart until it fails.
+#
+# STEP_FREE is not a third algorithm. It is the fastest search run against
+# Network.step_free_only(), because three copies of Dijkstra would be three
+# places for the same bug to be fixed separately.
 class Objective(Enum):
-    """What the caller is optimising for.
-
-    Each member arrived in the phase that implemented it. Shipping one that
-    raised NotImplementedError would advertise something that does not work,
-    and a caller has no way to tell the two apart until it fails.
-
-    STEP_FREE is not a third algorithm. It is the fastest search run against
-    Network.step_free_only(), because three copies of Dijkstra would be three
-    places for the same bug to be fixed separately.
-    """
+    """What the caller is optimising for."""
 
     FASTEST = "fastest"
     FEWEST_CHANGES = "fewest_changes"
     STEP_FREE = "step_free"
 
 
+# origin: Where the journey starts.
+# destination: Where it ends. May equal origin, which is answered with
+#     an empty Route rather than an error.
+# objective: What to optimise for.
+# avoid_lines: Lines the route may not use. Honoured by
+#     Network.without_lines(), which is why the field arrives in the
+#     same phase as that method rather than earlier - a field that looks
+#     configurable and is silently ignored is a mistake this project
+#     already made once with LOG_LEVEL and recorded in
+#     docs/DECISIONS.md.
+#
+#     A frozenset rather than a set so the query stays hashable, which
+#     is what lets Phase 6 use it as a cache key.
 @dataclass(frozen=True)
 class RouteQuery:
-    """A journey to plan.
-
-    Attributes:
-        origin: Where the journey starts.
-        destination: Where it ends. May equal origin, which is answered with
-            an empty Route rather than an error.
-        objective: What to optimise for.
-        avoid_lines: Lines the route may not use. Honoured by
-            Network.without_lines(), which is why the field arrives in the
-            same phase as that method rather than earlier - a field that looks
-            configurable and is silently ignored is a mistake this project
-            already made once with LOG_LEVEL and recorded in
-            docs/DECISIONS.md.
-
-            A frozenset rather than a set so the query stays hashable, which
-            is what lets Phase 6 use it as a cache key.
-    """
+    """A journey to plan."""
 
     origin: StationId
     destination: StationId

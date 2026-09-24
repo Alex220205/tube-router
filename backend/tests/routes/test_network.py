@@ -21,7 +21,8 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Line, Segment, Station, StationLine, TransportMode
+from app.models import Segment, StationLine
+from tests.helpers import a_line, a_station
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("TEST_DATABASE_URL"),
@@ -31,25 +32,12 @@ pytestmark = pytest.mark.skipif(
 
 async def seed_tiny_network(db: AsyncSession) -> None:
     """Two stations joined both ways on one line."""
-    line = Line(
-        code="victoria", name="Victoria", mode=TransportMode.TUBE, colour="#0098D4"
-    )
-    db.add(line)
-    await db.flush()
+    line = await a_line(db, "victoria", colour="#0098D4")
+    a = await a_station(db, "A", name="Alpha Underground Station", lon=-0.1, lat=51.5)
+    b = await a_station(db, "B", name="Beta Underground Station", lon=-0.2, lat=51.6)
 
-    a = Station(
-        naptan_id="A",
-        name="Alpha Underground Station",
-        location="SRID=4326;POINT(-0.1 51.5)",
-    )
-    b = Station(
-        naptan_id="B",
-        name="Beta Underground Station",
-        location="SRID=4326;POINT(-0.2 51.6)",
-    )
-    db.add_all([a, b])
-    await db.flush()
-
+    # Two segments written out rather than both_ways, because the times
+    # differ on purpose: one test here is about each direction keeping its own.
     db.add_all(
         [
             StationLine(station_id=a.id, line_id=line.id),
@@ -74,6 +62,7 @@ async def seed_tiny_network(db: AsyncSession) -> None:
 async def test_lines_carry_the_colour_the_map_draws_with(
     api: AsyncClient, db: AsyncSession
 ) -> None:
+    """Lines carry the colour the map draws with."""
     # colour is NOT NULL and has no TfL API source - it comes from a
     # hardcoded map in the seed. If that ever breaks, the map renders in
     # whatever the default is and looks merely wrong rather than broken.
@@ -89,6 +78,7 @@ async def test_lines_carry_the_colour_the_map_draws_with(
 async def test_every_segment_names_a_station_the_payload_contains(
     api: AsyncClient, db: AsyncSession
 ) -> None:
+    """Every segment names a station the payload contains."""
     # The failure this guards is a line drawn to nowhere. Segments carry ids
     # rather than nested stations, so the client joins them - and a dangling
     # id produces a map that is silently missing track.
@@ -106,6 +96,7 @@ async def test_every_segment_names_a_station_the_payload_contains(
 async def test_the_network_keeps_both_directions_with_their_own_times(
     api: AsyncClient, db: AsyncSession
 ) -> None:
+    """The network keeps both directions with their own times."""
     # Segments are directional and the two directions genuinely differ -
     # Waterloo & City is 180 seconds one way and 240 the other in the real
     # data. Collapsing them would average away real asymmetry.

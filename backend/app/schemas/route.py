@@ -37,13 +37,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from tube_engine import REASONS
 
 
+# Attributes mirror tube_engine.RouteQuery, but this is a separate class on
+# purpose: the engine's types must not grow Pydantic validators, and this
+# one must not grow engine behaviour.
 class RouteRequest(BaseModel):
-    """A journey to plan.
-
-    Attributes mirror tube_engine.RouteQuery, but this is a separate class on
-    purpose: the engine's types must not grow Pydantic validators, and this
-    one must not grow engine behaviour.
-    """
+    """A journey to plan."""
 
     model_config = ConfigDict(from_attributes=False)
 
@@ -87,15 +85,13 @@ class LegPublic(BaseModel):
     )
 
 
+# `found` is the discriminator rather than an HTTP status, because "those
+# two stations are not connected" is a successful answer to a well-formed
+# question - the same reasoning that made an empty station search a 200 in
+# Phase 3. A 404 would conflate it with "that endpoint does not exist", and
+# a 500 would claim the service is broken when it is working correctly.
 class RouteResponse(BaseModel):
-    """A planned journey, or a stated reason there is none.
-
-    `found` is the discriminator rather than an HTTP status, because "those
-    two stations are not connected" is a successful answer to a well-formed
-    question - the same reasoning that made an empty station search a 200 in
-    Phase 3. A 404 would conflate it with "that endpoint does not exist", and
-    a 500 would claim the service is broken when it is working correctly.
-    """
+    """A planned journey, or a stated reason there is none."""
 
     found: bool = Field(description="False when no route exists.")
     reason: str | None = Field(

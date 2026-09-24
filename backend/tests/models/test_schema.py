@@ -34,13 +34,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
     Interchange,
-    Line,
     Segment,
     Station,
     StationComplex,
     StationLine,
-    TransportMode,
 )
+from tests.helpers import a_line, a_station
 
 # Declared here rather than imported from conftest: tests/ is not a package,
 # so `from .conftest import ...` would not resolve, and pytest's own import of
@@ -52,6 +51,7 @@ pytestmark = pytest.mark.skipif(
 
 
 async def test_migrations_apply_and_record_a_version(db: AsyncSession) -> None:
+    """Migrations apply and record a version."""
     # The `db` fixture only exists once `alembic upgrade head` has succeeded,
     # so reaching this line is most of the assertion. The rest confirms
     # Alembic stamped the database rather than silently doing nothing.
@@ -61,6 +61,7 @@ async def test_migrations_apply_and_record_a_version(db: AsyncSession) -> None:
 
 
 async def test_postgis_extension_is_installed(db: AsyncSession) -> None:
+    """The PostGIS extension is installed."""
     result = await db.execute(
         text("SELECT extname FROM pg_extension WHERE extname = 'postgis'")
     )
@@ -69,6 +70,7 @@ async def test_postgis_extension_is_installed(db: AsyncSession) -> None:
 
 
 async def test_a_geography_point_round_trips(db: AsyncSession) -> None:
+    """A geography point round trips."""
     # Oxford Circus. Written as WGS84 lon/lat and read back as lon/lat, which
     # is the pair of conversions a station row will go through on every seed
     # and every query. 4326 is the SRID for WGS84 - the system GPS uses.
@@ -97,26 +99,11 @@ def point(lon: float, lat: float) -> str:
     return f"SRID=4326;POINT({lon} {lat})"
 
 
-async def a_line(db: AsyncSession, code: str = "victoria") -> Line:
-    line = Line(code=code, name=code.title(), mode=TransportMode.TUBE, colour="#0098D4")
-    db.add(line)
-    await db.flush()
-    return line
-
-
-async def a_station(
-    db: AsyncSession, naptan_id: str, name: str = "Somewhere"
-) -> Station:
-    station = Station(naptan_id=naptan_id, name=name, location=point(-0.1, 51.5))
-    db.add(station)
-    await db.flush()
-    return station
-
-
 # --- lines -------------------------------------------------------------------
 
 
 async def test_duplicate_line_code_is_rejected(db: AsyncSession) -> None:
+    """A duplicate line code is rejected."""
     # The 2021 `lines` table had no unique constraint on anything but its
     # primary key, so two rows could claim to be the Victoria line.
     await a_line(db, code="victoria")
@@ -129,6 +116,7 @@ async def test_duplicate_line_code_is_rejected(db: AsyncSession) -> None:
 
 
 async def test_duplicate_naptan_id_is_rejected(db: AsyncSession) -> None:
+    """A duplicate NaPTAN id is rejected."""
     # The audit found 83 duplicated station names across 198 rows because
     # nothing stopped them. NaPTAN is the identity now, and it is unique.
     await a_station(db, naptan_id="940GZZLUOXC")
@@ -138,6 +126,7 @@ async def test_duplicate_naptan_id_is_rejected(db: AsyncSession) -> None:
 
 
 async def test_station_without_a_location_is_rejected(db: AsyncSession) -> None:
+    """A station without a location is rejected."""
     # The single largest gap in the 2021 data: no coordinates existed at all,
     # because the table meant to hold them was malformed and empty. A station
     # the map cannot draw is not a station this project can use.
@@ -148,6 +137,7 @@ async def test_station_without_a_location_is_rejected(db: AsyncSession) -> None:
 
 
 async def test_station_can_belong_to_a_complex(db: AsyncSession) -> None:
+    """A station can belong to a complex."""
     # Not a rejection test. Bank and Monument are one interchange under two
     # names, and this is the relationship that lets them be modelled as such.
     complex_ = StationComplex(name="Bank and Monument", tfl_hub_id="HUBBAN")
@@ -167,6 +157,7 @@ async def test_station_can_belong_to_a_complex(db: AsyncSession) -> None:
 
 
 async def test_duplicate_tfl_hub_id_is_rejected(db: AsyncSession) -> None:
+    """A duplicate TfL hub id is rejected."""
     db.add(StationComplex(name="Bank and Monument", tfl_hub_id="HUBBAN"))
     await db.flush()
 
@@ -181,6 +172,7 @@ async def test_duplicate_tfl_hub_id_is_rejected(db: AsyncSession) -> None:
 async def test_segment_pointing_at_a_missing_station_is_rejected(
     db: AsyncSession,
 ) -> None:
+    """A segment pointing at a missing station is rejected."""
     # SQLite declared these foreign keys and did not enforce them, because the
     # application never set PRAGMA foreign_keys = ON. Postgres always does.
     line = await a_line(db)
@@ -203,6 +195,7 @@ async def test_segment_pointing_at_a_missing_station_is_rejected(
 async def test_segment_with_a_non_positive_duration_is_rejected(
     db: AsyncSession, seconds: int
 ) -> None:
+    """A segment with a non-positive duration is rejected."""
     # The audit found 12 links stored as zero minutes - Embankment to Charing
     # Cross on both the Bakerloo and the Northern among them. A zero-weight
     # edge tells the router the journey is free, which is worse than a missing
@@ -225,6 +218,7 @@ async def test_segment_with_a_non_positive_duration_is_rejected(
 
 
 async def test_segment_from_a_station_to_itself_is_rejected(db: AsyncSession) -> None:
+    """A segment from a station to itself is rejected."""
     line = await a_line(db)
     station = await a_station(db, naptan_id="940GZZLUOXC")
 
@@ -242,6 +236,7 @@ async def test_segment_from_a_station_to_itself_is_rejected(db: AsyncSession) ->
 
 
 async def test_duplicate_segment_on_the_same_line_is_rejected(db: AsyncSession) -> None:
+    """A duplicate segment on the same line is rejected."""
     line = await a_line(db)
     origin = await a_station(db, naptan_id="940GZZLUOXC")
     destination = await a_station(db, naptan_id="940GZZLUGPK")
@@ -261,6 +256,7 @@ async def test_duplicate_segment_on_the_same_line_is_rejected(db: AsyncSession) 
 
 
 async def test_the_same_link_on_two_lines_is_allowed(db: AsyncSession) -> None:
+    """The same link on two lines is allowed."""
     # The mirror of the test above, and the reason the unique constraint
     # includes line_id. Shepherd's Bush Market to Wood Lane is a real link on
     # both the Circle and the Hammersmith & City - the audit found it twice,
@@ -290,6 +286,7 @@ async def test_the_same_link_on_two_lines_is_allowed(db: AsyncSession) -> None:
 
 
 async def test_duplicate_station_line_pair_is_rejected(db: AsyncSession) -> None:
+    """A duplicate station and line pair is rejected."""
     # The composite primary key. A station serves a line once or not at all.
     line = await a_line(db)
     station = await a_station(db, naptan_id="940GZZLUOXC")
@@ -303,6 +300,7 @@ async def test_duplicate_station_line_pair_is_rejected(db: AsyncSession) -> None
 
 
 async def test_a_station_can_serve_several_lines(db: AsyncSession) -> None:
+    """A station can serve several lines."""
     # The case the 2021 schema could not express without duplicating the
     # station row. Oxford Circus is on three lines; here that is three rows in
     # a join table and one station.
@@ -320,6 +318,7 @@ async def test_a_station_can_serve_several_lines(db: AsyncSession) -> None:
 
 
 async def test_step_free_defaults_to_false_on_a_raw_insert(db: AsyncSession) -> None:
+    """Step-free defaults to false on a raw insert."""
     # The server default, not the ORM one. A seed script doing bulk inserts
     # bypasses the Python-side default entirely, and "absence of evidence is
     # not step-free" has to hold on that path too.
@@ -339,6 +338,7 @@ async def test_step_free_defaults_to_false_on_a_raw_insert(db: AsyncSession) -> 
 
 
 async def test_duplicate_interchange_is_rejected(db: AsyncSession) -> None:
+    """A duplicate interchange is rejected."""
     station = await a_station(db, naptan_id="940GZZLUBNK")
     northern = await a_line(db, code="northern")
     central = await a_line(db, code="central")
@@ -360,6 +360,7 @@ async def test_duplicate_interchange_is_rejected(db: AsyncSession) -> None:
 async def test_interchange_between_a_line_and_itself_is_rejected(
     db: AsyncSession,
 ) -> None:
+    """An interchange between a line and itself is rejected."""
     station = await a_station(db, naptan_id="940GZZLUBNK")
     northern = await a_line(db, code="northern")
 
@@ -379,6 +380,7 @@ async def test_interchange_between_a_line_and_itself_is_rejected(
 async def test_interchange_with_a_non_positive_duration_is_rejected(
     db: AsyncSession,
 ) -> None:
+    """An interchange with a non-positive duration is rejected."""
     station = await a_station(db, naptan_id="940GZZLUBNK")
     northern = await a_line(db, code="northern")
     central = await a_line(db, code="central")
@@ -397,6 +399,7 @@ async def test_interchange_with_a_non_positive_duration_is_rejected(
 
 
 async def test_interchange_is_directional(db: AsyncSession) -> None:
+    """An interchange is directional."""
     # Northern to Central at Bank is not necessarily the same walk as Central
     # to Northern - different platforms, sometimes a different passage. Both
     # directions must be storable, with different costs.
@@ -430,6 +433,7 @@ async def test_interchange_is_directional(db: AsyncSession) -> None:
 
 
 async def test_an_unknown_transport_mode_is_rejected(db: AsyncSession) -> None:
+    """An unknown transport mode is rejected."""
     # The enum is a real Postgres type, so a typo is a database error rather
     # than a row nobody notices until routing behaves oddly.
     with pytest.raises(DBAPIError):

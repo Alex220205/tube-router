@@ -25,8 +25,9 @@ import os
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Line, Segment, Station, StationLine, TransportMode
+from app.models import StationLine
 from app.services import seed_checks
+from tests.helpers import a_line, a_station, both_ways
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("TEST_DATABASE_URL"),
@@ -34,46 +35,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-async def build_line(db: AsyncSession, code: str) -> Line:
-    line = Line(code=code, name=code.title(), mode=TransportMode.TUBE, colour="#000000")
-    db.add(line)
-    await db.flush()
-    return line
-
-
-async def build_station(db: AsyncSession, naptan: str) -> Station:
-    station = Station(
-        naptan_id=naptan, name=naptan, location="SRID=4326;POINT(-0.1 51.5)"
-    )
-    db.add(station)
-    await db.flush()
-    return station
-
-
-async def connect(
-    db: AsyncSession, line: Line, origin: Station, destination: Station
-) -> None:
-    """Join two stations in both directions, as the real seed does."""
-    db.add_all(
-        [
-            Segment(
-                line_id=line.id,
-                origin_station_id=origin.id,
-                destination_station_id=destination.id,
-                seconds=120,
-            ),
-            Segment(
-                line_id=line.id,
-                origin_station_id=destination.id,
-                destination_station_id=origin.id,
-                seconds=120,
-            ),
-        ]
-    )
-    await db.flush()
-
-
 async def result_for(db: AsyncSession, name: str) -> seed_checks.CheckResult:
+    """Run every check and return the one with this name."""
     results = await seed_checks.run_all(db)
     return next(result for result in results if result.name == name)
 
@@ -82,15 +45,19 @@ async def result_for(db: AsyncSession, name: str) -> seed_checks.CheckResult:
 
 
 async def test_a_split_network_fails_the_connectivity_check(db: AsyncSession) -> None:
+    """A split network fails the connectivity check."""
     # Two pairs of stations with no track between them: the 2021 situation in
     # miniature, where the Epping and West Ruislip branches sat disconnected
     # from the rest of the Central line.
-    line = await build_line(db, "central")
-    a, b, c, d = [await build_station(db, n) for n in ("A", "B", "C", "D")]
+    line = await a_line(db, "central")
+    a = await a_station(db, "A")
+    b = await a_station(db, "B")
+    c = await a_station(db, "C")
+    d = await a_station(db, "D")
     for station in (a, b, c, d):
         db.add(StationLine(station_id=station.id, line_id=line.id))
-    await connect(db, line, a, b)
-    await connect(db, line, c, d)
+    await both_ways(db, line, a, b)
+    await both_ways(db, line, c, d)
     await db.flush()
 
     check = await result_for(db, "the graph is one connected piece")
@@ -102,12 +69,15 @@ async def test_a_split_network_fails_the_connectivity_check(db: AsyncSession) ->
 
 
 async def test_a_joined_network_passes(db: AsyncSession) -> None:
-    line = await build_line(db, "central")
-    a, b, c = [await build_station(db, n) for n in ("A", "B", "C")]
+    """A joined network passes."""
+    line = await a_line(db, "central")
+    a = await a_station(db, "A")
+    b = await a_station(db, "B")
+    c = await a_station(db, "C")
     for station in (a, b, c):
         db.add(StationLine(station_id=station.id, line_id=line.id))
-    await connect(db, line, a, b)
-    await connect(db, line, b, c)
+    await both_ways(db, line, a, b)
+    await both_ways(db, line, b, c)
     await db.flush()
 
     check = await result_for(db, "the graph is one connected piece")
@@ -119,12 +89,15 @@ async def test_a_joined_network_passes(db: AsyncSession) -> None:
 async def test_a_station_reachable_only_across_lines_still_counts(
     db: AsyncSession,
 ) -> None:
+    """A station reachable only across lines still counts."""
     # An interchange station holds the network together even though the two
     # lines never share a segment. Treating the graph as undirected and
     # line-agnostic is what makes that work.
-    victoria = await build_line(db, "victoria")
-    central = await build_line(db, "central")
-    a, shared, c = [await build_station(db, n) for n in ("A", "SHARED", "C")]
+    victoria = await a_line(db, "victoria")
+    central = await a_line(db, "central")
+    a = await a_station(db, "A")
+    shared = await a_station(db, "SHARED")
+    c = await a_station(db, "C")
     db.add_all(
         [
             StationLine(station_id=a.id, line_id=victoria.id),
@@ -133,8 +106,8 @@ async def test_a_station_reachable_only_across_lines_still_counts(
             StationLine(station_id=c.id, line_id=central.id),
         ]
     )
-    await connect(db, victoria, a, shared)
-    await connect(db, central, shared, c)
+    await both_ways(db, victoria, a, shared)
+    await both_ways(db, central, shared, c)
     await db.flush()
 
     assert (await result_for(db, "the graph is one connected piece")).passed is True
@@ -144,18 +117,20 @@ async def test_a_station_reachable_only_across_lines_still_counts(
 
 
 async def test_a_line_with_no_track_is_caught(db: AsyncSession) -> None:
+    """A line with no track is caught."""
     # London Overground in the 2021 database: a row in `lines`, 85 stations,
     # and zero connections.
-    line = await build_line(db, "victoria")
-    ghost = await build_line(db, "overground-with-no-track")
-    a, b = [await build_station(db, n) for n in ("A", "B")]
+    line = await a_line(db, "victoria")
+    ghost = await a_line(db, "overground-with-no-track")
+    a = await a_station(db, "A")
+    b = await a_station(db, "B")
     db.add_all(
         [
             StationLine(station_id=a.id, line_id=line.id),
             StationLine(station_id=b.id, line_id=line.id),
         ]
     )
-    await connect(db, line, a, b)
+    await both_ways(db, line, a, b)
     await db.flush()
 
     check = await result_for(db, "every line has at least one segment")
@@ -166,18 +141,20 @@ async def test_a_line_with_no_track_is_caught(db: AsyncSession) -> None:
 
 
 async def test_a_station_serving_no_line_is_caught(db: AsyncSession) -> None:
+    """A station serving no line is caught."""
     # 120 of the 486 rows in the 2021 stations table had no connections at
     # all - the entire Overground import.
-    line = await build_line(db, "victoria")
-    a, b = [await build_station(db, n) for n in ("A", "B")]
-    await build_station(db, "ORPHAN")
+    line = await a_line(db, "victoria")
+    a = await a_station(db, "A")
+    b = await a_station(db, "B")
+    await a_station(db, "ORPHAN")
     db.add_all(
         [
             StationLine(station_id=a.id, line_id=line.id),
             StationLine(station_id=b.id, line_id=line.id),
         ]
     )
-    await connect(db, line, a, b)
+    await both_ways(db, line, a, b)
     await db.flush()
 
     check = await result_for(db, "every station is on a line")
@@ -189,6 +166,7 @@ async def test_a_station_serving_no_line_is_caught(db: AsyncSession) -> None:
 async def test_an_empty_database_does_not_report_a_healthy_graph(
     db: AsyncSession,
 ) -> None:
+    """An empty database does not report a healthy graph."""
     # The failure mode that matters most: a seed that wrote nothing must not
     # be able to claim everything is reachable, which is trivially true of
     # zero stations.

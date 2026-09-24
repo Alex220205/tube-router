@@ -69,24 +69,21 @@ PARTIAL = frozenset({3, 5, 11})
 GOOD_SERVICE = 10
 
 
+# line_code: TfL's line id - "piccadilly". The same identifier the
+#     engine uses for LineId, so no translation is needed anywhere.
+# severity: TfL's 0-20 scale, kept as the number rather than a boolean.
+#     A client may want to colour Minor Delays differently from Severe
+#     Delays, and collapsing it here would throw that away for good.
+# description: TfL's own words - "Severe Delays".
+# reason: The sentence a user reads, where there is one. None on a line
+#     with nothing wrong.
+# affected_stops: NaPTAN ids of the stations a partial closure covers,
+#     from TfL's affectedStops. Empty on a healthy line, and empty on a
+#     whole-line closure too - there is no "part" to name when the whole
+#     thing is shut, which is why `closed_entirely` tests both.
 @dataclass(frozen=True)
 class LineStatus:
-    """What TfL currently says about one line.
-
-    Attributes:
-        line_code: TfL's line id - "piccadilly". The same identifier the
-            engine uses for LineId, so no translation is needed anywhere.
-        severity: TfL's 0-20 scale, kept as the number rather than a boolean.
-            A client may want to colour Minor Delays differently from Severe
-            Delays, and collapsing it here would throw that away for good.
-        description: TfL's own words - "Severe Delays".
-        reason: The sentence a user reads, where there is one. None on a line
-            with nothing wrong.
-        affected_stops: NaPTAN ids of the stations a partial closure covers,
-            from TfL's affectedStops. Empty on a healthy line, and empty on a
-            whole-line closure too - there is no "part" to name when the whole
-            thing is shut, which is why `closed_entirely` tests both.
-    """
+    """What TfL currently says about one line."""
 
     line_code: str
     severity: int
@@ -99,38 +96,32 @@ class LineStatus:
         """Whether trains are moving on this line at all."""
         return self.severity not in NOT_RUNNING
 
+    # A Part Closure with a list of affected stops suppresses only that
+    # stretch. The same severity with no stops has to be treated as the
+    # whole line: TfL said trains are not running and declined to say
+    # where, and guessing "probably fine" would route someone onto it.
     @property
     def closed_entirely(self) -> bool:
-        """Whether the whole line is gone, rather than one stretch of it.
-
-        A Part Closure with a list of affected stops suppresses only that
-        stretch. The same severity with no stops has to be treated as the
-        whole line: TfL said trains are not running and declined to say
-        where, and guessing "probably fine" would route someone onto it.
-        """
+        """Whether the whole line is gone, rather than one stretch of it."""
         return not self.running and not (
             self.severity in PARTIAL and self.affected_stops
         )
 
 
+# A line can carry several lineStatuses at once - part of it suspended while
+# the rest runs normally. The worst one wins, because a route planner that
+# took the cheerful half of a split status would send someone to a closed
+# platform.
+#
+# payload: The decoded JSON array. Anything unexpected is skipped rather
+#     than raised on: this runs in a background poller, and one malformed
+#     line must not cost us the other ten.
+#
+# One entry per line that could be read, ordered by line code so a
+# re-poll produces a comparable list and "has anything changed" is a
+# simple equality check.
 def statuses_from_payload(payload: Any) -> list[LineStatus]:
-    """Read /Line/Mode/tube/Status into one LineStatus per line.
-
-    A line can carry several lineStatuses at once - part of it suspended while
-    the rest runs normally. The worst one wins, because a route planner that
-    took the cheerful half of a split status would send someone to a closed
-    platform.
-
-    Args:
-        payload: The decoded JSON array. Anything unexpected is skipped rather
-            than raised on: this runs in a background poller, and one malformed
-            line must not cost us the other ten.
-
-    Returns:
-        One entry per line that could be read, ordered by line code so a
-        re-poll produces a comparable list and "has anything changed" is a
-        simple equality check.
-    """
+    """Read /Line/Mode/tube/Status into one LineStatus per line."""
     if not isinstance(payload, list):
         return []
 
@@ -163,30 +154,18 @@ def statuses_from_payload(payload: Any) -> list[LineStatus]:
     return sorted(statuses, key=lambda s: s.line_code)
 
 
+# Line codes, ready to pass to Network.without_lines(). Empty on a good
+# day, which is most days.
 def not_running(statuses: list[LineStatus]) -> frozenset[str]:
-    """The lines a route must avoid because trains are not moving on them.
-
-    Args:
-        statuses: Output of statuses_from_payload.
-
-    Returns:
-        Line codes, ready to pass to Network.without_lines(). Empty on a good
-        day, which is most days.
-    """
+    """The lines a route must avoid because trains are not moving on them."""
     return frozenset(s.line_code for s in statuses if s.closed_entirely)
 
 
+# Line code to NaPTAN ids, ready for Network.without_closed_sections.
+# Only lines that are partly closed AND told us where appear here;
+# everything else is either running or handled by not_running.
 def closed_sections(statuses: list[LineStatus]) -> dict[str, frozenset[str]]:
-    """The stretch of each partly closed line that has no trains on it.
-
-    Args:
-        statuses: Output of statuses_from_payload.
-
-    Returns:
-        Line code to NaPTAN ids, ready for Network.without_closed_sections.
-        Only lines that are partly closed AND told us where appear here;
-        everything else is either running or handled by not_running.
-    """
+    """The stretch of each partly closed line that has no trains on it."""
     return {
         s.line_code: s.affected_stops
         for s in statuses
@@ -194,14 +173,12 @@ def closed_sections(statuses: list[LineStatus]) -> dict[str, frozenset[str]]:
     }
 
 
+# Empty is the safe answer at every step: a stop list we cannot read leaves
+# the line wholly suppressed rather than partly, which is the error that
+# refuses a journey rather than the one that sends someone to a shut
+# platform.
 def _affected_stops(entry: dict[str, Any]) -> frozenset[str]:
-    """NaPTAN ids from disruption.affectedStops, or empty if TfL said nothing.
-
-    Empty is the safe answer at every step: a stop list we cannot read leaves
-    the line wholly suppressed rather than partly, which is the error that
-    refuses a journey rather than the one that sends someone to a shut
-    platform.
-    """
+    """NaPTAN ids from disruption.affectedStops, or empty if TfL said nothing."""
     disruption = entry.get("disruption")
     if not isinstance(disruption, dict):
         return frozenset()
@@ -217,14 +194,12 @@ def _affected_stops(entry: dict[str, Any]) -> frozenset[str]:
     )
 
 
+# An unreadable or missing severity is treated as running. TfL can add a
+# code at any time, and a number we do not recognise must not quietly delete
+# a line from the network - the failure that would strand someone is the
+# optimistic one being wrong, not the pessimistic one.
 def _severity(entry: dict[str, Any]) -> int:
-    """TfL's severity number, defaulting to Good Service.
-
-    An unreadable or missing severity is treated as running. TfL can add a
-    code at any time, and a number we do not recognise must not quietly delete
-    a line from the network - the failure that would strand someone is the
-    optimistic one being wrong, not the pessimistic one.
-    """
+    """TfL's severity number, defaulting to Good Service."""
     value = entry.get("statusSeverity")
     if isinstance(value, bool) or not isinstance(value, int | float | str):
         return GOOD_SERVICE

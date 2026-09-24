@@ -60,23 +60,21 @@ from .services import status_poller
 settings = get_settings()
 
 
+# The routing graph is still built on first use, not here, so a slow or
+# empty database does not stop the service starting - Phase 0 established
+# that /health must be able to report "degraded".
+#
+# The status poller is started rather than awaited, for the same reason. It
+# owns every one of its own failures; if TfL is down the task retries
+# quietly and the rest of the service is unaffected.
+#
+# On the way out the task is cancelled and both pools are closed. An unclean
+# exit leaves connections lingering on the Postgres side until it times them
+# out, and a poller left running past shutdown keeps a TfL connection open
+# with nothing to serve.
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Start-up and shut-down work, either side of the yield.
-
-    The routing graph is still built on first use, not here, so a slow or
-    empty database does not stop the service starting - Phase 0 established
-    that /health must be able to report "degraded".
-
-    The status poller is started rather than awaited, for the same reason. It
-    owns every one of its own failures; if TfL is down the task retries
-    quietly and the rest of the service is unaffected.
-
-    On the way out the task is cancelled and both pools are closed. An unclean
-    exit leaves connections lingering on the Postgres side until it times them
-    out, and a poller left running past shutdown keeps a TfL connection open
-    with nothing to serve.
-    """
+    """Start-up and shut-down work, either side of the yield."""
     poller = asyncio.create_task(status_poller.run())
 
     yield

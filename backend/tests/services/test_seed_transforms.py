@@ -47,6 +47,7 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "tfl"
 
 
 def fixture(name: str) -> Any:
+    """Load a recorded TfL response from the fixtures folder."""
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
 
@@ -77,6 +78,7 @@ def fixture(name: str) -> Any:
 def test_tfl_booleans_are_parsed_regardless_of_casing_or_padding(
     raw: str | None, expected: bool
 ) -> None:
+    """TfL booleans are parsed regardless of casing or padding."""
     assert parse_bool(raw) is expected
 
 
@@ -84,6 +86,7 @@ def test_tfl_booleans_are_parsed_regardless_of_casing_or_padding(
 
 
 def test_every_tube_line_becomes_a_row_with_a_colour() -> None:
+    """Every tube line becomes a row with a colour."""
     rows = lines_from_payload(fixture("lines_tube.json"))
 
     assert len(rows) == 11
@@ -101,6 +104,7 @@ def test_every_tube_line_becomes_a_row_with_a_colour() -> None:
 
 
 def test_an_unknown_line_gets_the_placeholder_colour_not_a_guess() -> None:
+    """An unknown line gets the placeholder colour, not a guess."""
     rows = lines_from_payload([{"id": "monorail", "name": "Monorail"}])
 
     # Grey, so an unstyled line is visibly wrong on the map rather than
@@ -112,6 +116,7 @@ def test_an_unknown_line_gets_the_placeholder_colour_not_a_guess() -> None:
 
 
 def test_stations_are_deduplicated_by_naptan_across_lines() -> None:
+    """Stations are deduplicated by NaPTAN across lines."""
     stops = fixture("stop_points_victoria.json")
     # The same line's stops twice: a station on two lines appears in two
     # responses, which is precisely the case that gave the 2021 database 486
@@ -123,6 +128,7 @@ def test_stations_are_deduplicated_by_naptan_across_lines() -> None:
 
 
 def test_station_names_are_taken_verbatim() -> None:
+    """Station names are taken verbatim."""
     rows = stations_from_stop_points({"victoria": fixture("stop_points_victoria.json")})
     names = {row.name for row in rows}
 
@@ -132,6 +138,7 @@ def test_station_names_are_taken_verbatim() -> None:
 
 
 def test_a_station_without_coordinates_fails_the_seed() -> None:
+    """A station without coordinates fails the seed."""
     # stations.location is NOT NULL, and the single largest gap in the 2021
     # data was that no coordinates existed at all. Failing loudly here beats
     # discovering holes in Phase 8 when the map renders.
@@ -146,6 +153,7 @@ def test_a_station_without_coordinates_fails_the_seed() -> None:
 
 
 def test_an_empty_hub_code_becomes_null_not_an_empty_string() -> None:
+    """An empty hub code becomes null, not an empty string."""
     rows = stations_from_stop_points(
         {
             "victoria": [
@@ -175,6 +183,7 @@ def test_an_empty_hub_code_becomes_null_not_an_empty_string() -> None:
 
 
 def test_stations_sharing_a_hub_become_one_complex() -> None:
+    """Stations sharing a hub become one complex."""
     stations = [
         StationRow("A", "Bank Underground Station", 1.0, 1.0, "HUBBAN"),
         StationRow("B", "Monument Underground Station", 1.0, 1.0, "HUBBAN"),
@@ -191,6 +200,7 @@ def test_stations_sharing_a_hub_become_one_complex() -> None:
 
 
 def test_real_victoria_stations_produce_real_hubs() -> None:
+    """Real Victoria stations produce real hubs."""
     stations = stations_from_stop_points(
         {"victoria": fixture("stop_points_victoria.json")}
     )
@@ -204,6 +214,7 @@ def test_real_victoria_stations_produce_real_hubs() -> None:
 
 
 def test_step_free_is_read_per_station_and_line() -> None:
+    """Step-free is read per station and line."""
     # The finding that justifies putting the flag on station_lines rather
     # than on stations: two stations on the same line, different answers.
     rows = [
@@ -226,6 +237,7 @@ def test_step_free_is_read_per_station_and_line() -> None:
 
 
 def test_one_accessible_platform_makes_the_station_step_free_for_that_line() -> None:
+    """One accessible platform makes the station step-free for that line."""
     # A station has several platforms per line. One being a designated level
     # access point is what makes the journey possible.
     rows = [
@@ -245,6 +257,7 @@ def test_one_accessible_platform_makes_the_station_step_free_for_that_line() -> 
 
 
 def test_a_manual_ramp_counts_as_step_free() -> None:
+    """A manual ramp counts as step-free."""
     # TfL publishes accessibility across two columns and treats both as
     # step-free in its own journey planner. Reading only
     # DesignatedLevelAccessPoint drops roughly half the accessible platforms
@@ -273,6 +286,7 @@ def test_a_manual_ramp_counts_as_step_free() -> None:
 
 
 def test_step_free_from_the_real_csv() -> None:
+    """Step-free platforms are read correctly from the real CSV."""
     text = (FIXTURES / "PlatformServices.csv").read_text(encoding="utf-8-sig")
     rows = list(csv.DictReader(text.splitlines()))
 
@@ -286,6 +300,7 @@ def test_step_free_from_the_real_csv() -> None:
 
 
 def test_cumulative_arrival_times_become_adjacent_durations() -> None:
+    """Cumulative arrival times become adjacent durations."""
     # timeToArrival counts from the origin, so adjacent gaps are differences.
     # Reading them as absolute would make every station further along the
     # line look further from its neighbour than it is.
@@ -315,6 +330,7 @@ def test_cumulative_arrival_times_become_adjacent_durations() -> None:
 
 
 def test_durations_from_the_real_victoria_timetable() -> None:
+    """Durations are derived correctly from the real Victoria timetable."""
     durations = durations_from_timetable(
         fixture("timetable_victoria_wwl.json"), origin_naptan="940GZZLUWWL"
     )
@@ -326,6 +342,7 @@ def test_durations_from_the_real_victoria_timetable() -> None:
 
 
 def test_a_payload_with_no_timetable_yields_nothing_rather_than_failing() -> None:
+    """A payload with no timetable yields nothing rather than failing."""
     # TfL returns this for some branch and direction combinations. The seed
     # falls back to a default rather than dying.
     assert durations_from_timetable({}, "A") == {}
@@ -336,6 +353,7 @@ def test_a_payload_with_no_timetable_yields_nothing_rather_than_failing() -> Non
 
 
 def test_consecutive_stops_become_directional_segments() -> None:
+    """Consecutive stops become directional segments."""
     payload = {
         "stopPointSequences": [{"stopPoint": [{"id": "A"}, {"id": "B"}, {"id": "C"}]}]
     }
@@ -352,6 +370,7 @@ def test_consecutive_stops_become_directional_segments() -> None:
 
 
 def test_segments_are_never_joined_across_branches() -> None:
+    """Segments are never joined across branches."""
     # Two sequences are two branches. Joining the last stop of one to the
     # first of the next would invent track that does not exist - the mirror
     # of the 2021 fault, where real track was missing and two Central line
@@ -371,6 +390,7 @@ def test_segments_are_never_joined_across_branches() -> None:
 
 
 def test_a_zero_length_gap_is_floored_and_counted() -> None:
+    """A zero-length gap is floored and counted."""
     # TfL's whole-minute timetables make this inevitable. A zero-weight edge
     # tells the router the hop is free, which is worse than a missing edge
     # because it produces a confident wrong answer - and it is exactly the
@@ -385,6 +405,7 @@ def test_a_zero_length_gap_is_floored_and_counted() -> None:
 
 
 def test_a_segment_with_no_timetable_gets_the_default_and_is_counted() -> None:
+    """A segment with no timetable gets the default and is counted."""
     payload = {"stopPointSequences": [{"stopPoint": [{"id": "A"}, {"id": "B"}]}]}
 
     rows, adjusted = segments_from_sequences("victoria", [payload], {})
@@ -394,6 +415,7 @@ def test_a_segment_with_no_timetable_gets_the_default_and_is_counted() -> None:
 
 
 def test_a_repeated_stop_does_not_become_a_self_loop() -> None:
+    """A repeated stop does not become a self-loop."""
     # TfL repeats a stop at some branch joins. The schema rejects a self-loop
     # and it would mean nothing anyway.
     payload = {
@@ -406,6 +428,7 @@ def test_a_repeated_stop_does_not_become_a_self_loop() -> None:
 
 
 def test_real_central_line_branches_produce_disjoint_segment_runs() -> None:
+    """Real Central line branches produce disjoint segment runs."""
     payload = fixture("route_sequence_central_inbound.json")
     assert len(payload["stopPointSequences"]) > 1, "fixture should have branches"
 
@@ -443,10 +466,12 @@ def test_real_central_line_branches_produce_disjoint_segment_runs() -> None:
 def test_platform_identifiers_are_parsed_into_station_and_lines(
     platform_id: str, expected: tuple[str, list[str]] | None
 ) -> None:
+    """Platform identifiers are parsed into station and lines."""
     assert parse_platform_id(platform_id) == expected
 
 
 def test_measured_distances_become_walk_times() -> None:
+    """Measured distances become walk times."""
     rows = [
         {
             "FromPlatformUniqueId": "S-Plat01-NB-victoria",
@@ -461,6 +486,7 @@ def test_measured_distances_become_walk_times() -> None:
 
 
 def test_a_distance_between_two_different_stations_is_not_an_interchange() -> None:
+    """A distance between two different stations is not an interchange."""
     # That is what a station complex represents, not an interchange row.
     rows = [
         {
@@ -474,6 +500,7 @@ def test_a_distance_between_two_different_stations_is_not_an_interchange() -> No
 
 
 def test_every_line_pair_at_a_station_gets_an_interchange_both_ways() -> None:
+    """Every line pair at a station gets an interchange both ways."""
     station_lines = [
         StationLineRow("S", "victoria", True),
         StationLineRow("S", "central", False),
@@ -490,6 +517,7 @@ def test_every_line_pair_at_a_station_gets_an_interchange_both_ways() -> None:
 
 
 def test_an_unmeasured_interchange_gets_the_stated_default() -> None:
+    """An unmeasured interchange gets the stated default."""
     station_lines = [
         StationLineRow("S", "victoria", True),
         StationLineRow("S", "central", True),
@@ -501,6 +529,7 @@ def test_an_unmeasured_interchange_gets_the_stated_default() -> None:
 
 
 def test_an_unmeasured_change_between_accessible_platforms_is_step_free() -> None:
+    """An unmeasured change between accessible platforms is step-free."""
     # Inferred, not measured: both platforms are step-free, so the change can
     # normally be made via the lifts. TfL measures only a few hundred pairs
     # network-wide, and requiring the measurement marked 6 of 312 changes
@@ -517,6 +546,7 @@ def test_an_unmeasured_change_between_accessible_platforms_is_step_free() -> Non
 
 
 def test_a_change_touching_an_inaccessible_platform_is_not_step_free() -> None:
+    """A change touching an inaccessible platform is not step-free."""
     # The counterweight, and the direction that matters. An inference that
     # said yes regardless would be worse than the rule it replaced: claiming
     # a change is accessible when it is not is the failure that strands
@@ -532,6 +562,7 @@ def test_a_change_touching_an_inaccessible_platform_is_not_step_free() -> None:
 
 
 def test_a_measured_interchange_uses_the_distance_and_is_step_free() -> None:
+    """A measured interchange uses the distance and is step-free."""
     station_lines = [
         StationLineRow("S", "victoria", True),
         StationLineRow("S", "central", True),
@@ -548,18 +579,16 @@ def test_a_measured_interchange_uses_the_distance_and_is_step_free() -> None:
     assert unmeasured.seconds == DEFAULT_INTERCHANGE_SECONDS
 
 
+# TfL measures the same corridor whole and in halves: jubilee to victoria is
+# 380 m, and jubilee to piccadilly to victoria is 220 + 160 - the same 380 m.
+# Rounding each to whole seconds independently gives 317 direct against
+# 183 + 133 = 316 decomposed, so the router could save a second by walking
+# through a platform it never boards.
+#
+# Two of 6006 real routes did exactly that, and reported a total their own
+# legs could not account for.
 def test_a_chained_walk_never_undercuts_the_direct_one() -> None:
-    """The real Green Park numbers, and the bug they caused.
-
-    TfL measures the same corridor whole and in halves: jubilee to victoria is
-    380 m, and jubilee to piccadilly to victoria is 220 + 160 - the same 380 m.
-    Rounding each to whole seconds independently gives 317 direct against
-    183 + 133 = 316 decomposed, so the router could save a second by walking
-    through a platform it never boards.
-
-    Two of 6006 real routes did exactly that, and reported a total their own
-    legs could not account for.
-    """
+    """The real Green Park numbers, and the bug they caused."""
     station_lines = [
         StationLineRow("940GZZLUGPK", "jubilee", True),
         StationLineRow("940GZZLUGPK", "piccadilly", True),
@@ -591,6 +620,7 @@ def test_a_chained_walk_never_undercuts_the_direct_one() -> None:
 
 
 def test_closure_improves_a_default_that_has_a_measured_path_through() -> None:
+    """Closure improves a default that has a measured path through."""
     # A pair with no measurement of its own would take the flat 180-second
     # default, even when two measured walks connect it in 120. The default is
     # a stated guess and real measurements should beat it.
@@ -613,6 +643,7 @@ def test_closure_improves_a_default_that_has_a_measured_path_through() -> None:
 
 
 def test_no_interchange_is_instant() -> None:
+    """No interchange is instant."""
     station_lines = [
         StationLineRow("S", "victoria", True),
         StationLineRow("S", "central", True),
@@ -631,6 +662,7 @@ def test_no_interchange_is_instant() -> None:
 
 
 def test_station_line_membership_comes_from_the_sequences() -> None:
+    """Station line membership comes from the sequences."""
     sequences = {
         "victoria": [
             {"stopPointSequences": [{"stopPoint": [{"id": "A"}, {"id": "B"}]}]}

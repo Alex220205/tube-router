@@ -68,13 +68,11 @@ RATE_LIMIT_PAUSE = 30.0
 UNAUTHENTICATED_REQUEST_INTERVAL = 1.3
 
 
+# Only the delay-seconds form is handled. The HTTP-date form is legal but
+# TfL does not use it, and guessing at clock skew to parse one would add
+# risk for no benefit.
 def _retry_after(response: httpx.Response, *, default: float) -> float:
-    """Read the Retry-After header, falling back to a default.
-
-    Only the delay-seconds form is handled. The HTTP-date form is legal but
-    TfL does not use it, and guessing at clock skew to parse one would add
-    risk for no benefit.
-    """
+    """Read the Retry-After header, falling back to a default."""
     raw = response.headers.get("Retry-After", "").strip()
     try:
         return max(0.0, float(raw))
@@ -86,17 +84,14 @@ class TfLError(RuntimeError):
     """TfL could not be reached, or answered with something unusable."""
 
 
+# platform_services: One row per platform per line. Carries
+#     DesignatedLevelAccessPoint, which is step-free access per
+#     (station, line) - the only place TfL publishes it at that grain.
+# step_free_interchanges: Platform-to-platform distances in metres.
+#     Sparse: about 114 rows for the whole network.
 @dataclass(frozen=True)
 class StationData:
-    """The two CSVs the seed needs out of the station data archive.
-
-    Attributes:
-        platform_services: One row per platform per line. Carries
-            DesignatedLevelAccessPoint, which is step-free access per
-            (station, line) - the only place TfL publishes it at that grain.
-        step_free_interchanges: Platform-to-platform distances in metres.
-            Sparse: about 114 rows for the whole network.
-    """
+    """The two CSVs the seed needs out of the station data archive."""
 
     platform_services: list[dict[str, str]]
     step_free_interchanges: list[dict[str, str]]
@@ -105,6 +100,15 @@ class StationData:
 class TfLClient:
     """Reads the TfL Unified API. Knows nothing about this project's schema."""
 
+    # base_url: Root of the API.
+    # app_key: Optional. Raises the rate limit; every endpoint used here
+    #     answers without one.
+    # timeout_seconds: Applied to each attempt, not to the total.
+    # max_attempts: Total attempts including the first.
+    # min_request_interval_seconds: Smallest gap between the start of
+    #     one request and the next. TfL allows 50 a minute without a
+    #     key, so the seed sets this; tests leave it at zero.
+    # transport: Injected by tests. None means a real network transport.
     def __init__(
         self,
         *,
@@ -115,19 +119,7 @@ class TfLClient:
         min_request_interval_seconds: float = 0.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        """Build a client.
-
-        Args:
-            base_url: Root of the API.
-            app_key: Optional. Raises the rate limit; every endpoint used here
-                answers without one.
-            timeout_seconds: Applied to each attempt, not to the total.
-            max_attempts: Total attempts including the first.
-            min_request_interval_seconds: Smallest gap between the start of
-                one request and the next. TfL allows 50 a minute without a
-                key, so the seed sets this; tests leave it at zero.
-            transport: Injected by tests. None means a real network transport.
-        """
+        """Build a client."""
         self._base_url = base_url.rstrip("/")
         self._app_key = app_key
         self._max_attempts = max_attempts
@@ -154,9 +146,11 @@ class TfLClient:
             self._last_request_at = asyncio.get_running_loop().time()
 
     async def __aenter__(self) -> "TfLClient":
+        """Open the client for an `async with` block."""
         return self
 
     async def __aexit__(self, *exc_info: object) -> None:
+        """Close the underlying HTTP client on the way out."""
         await self.aclose()
 
     async def aclose(self) -> None:
@@ -166,17 +160,7 @@ class TfLClient:
     # --- the request itself --------------------------------------------------
 
     async def _get(self, path: str) -> httpx.Response:
-        """GET a path, retrying transport failures and 5xx.
-
-        Args:
-            path: Path beginning with a slash.
-
-        Returns:
-            The successful response.
-
-        Raises:
-            TfLError: On a 4xx, or once the attempts are exhausted.
-        """
+        """GET a path, retrying transport failures and 5xx."""
         # The key goes in the query string because that is what TfL accepts;
         # they have no header form. Omitted entirely when blank, rather than
         # sent empty, which TfL rejects as a malformed key.
@@ -228,6 +212,7 @@ class TfLClient:
         ) from last
 
     async def _get_json(self, path: str) -> Any:
+        """GET a path and return its body as JSON, or raise TfLError."""
         response = await self._get(path)
         try:
             return response.json()
@@ -236,89 +221,59 @@ class TfLClient:
 
     # --- endpoints -----------------------------------------------------------
 
+    # Eleven line objects, each with at least id, name and modeName.
+    # Includes Waterloo & City, which the 2021 database did not have.
     async def tube_lines(self) -> list[dict[str, Any]]:
-        """Every line running on the tube network.
-
-        Returns:
-            Eleven line objects, each with at least id, name and modeName.
-            Includes Waterloo & City, which the 2021 database did not have.
-        """
+        """Every line running on the tube network."""
         return list(await self._get_json("/Line/Mode/tube"))
 
+    # The only endpoint here that is polled rather than read once, so it is
+    # also the only one whose failures are routine: TfL goes down, and the
+    # service carries on serving the last status it knew. The throttle, the
+    # 429 handling and the retry are the ones every other call already uses.
+    #
+    # **`detail=true` is what populates `disruption.affectedStops`.** Without
+    # it that array comes back empty on every line, including lines TfL is
+    # currently reporting as a Part Closure, and the only record of which
+    # stretch is shut is English prose in `reason`. With it, the stops arrive
+    # as NaPTAN ids that match `stations.naptan_id` exactly.
+    #
+    # Eleven line objects, each carrying lineStatuses with a
+    # statusSeverity, its description, a reason where there is one, and
+    # the stations a partial closure affects.
     async def line_status(self) -> list[dict[str, Any]]:
-        """Live status for every tube line.
-
-        The only endpoint here that is polled rather than read once, so it is
-        also the only one whose failures are routine: TfL goes down, and the
-        service carries on serving the last status it knew. The throttle, the
-        429 handling and the retry are the ones every other call already uses.
-
-        Returns:
-            Eleven line objects, each carrying lineStatuses with a
-            statusSeverity, its description, a reason where there is one, and
-            the stations a partial closure affects.
-
-        **`detail=true` is what populates `disruption.affectedStops`.** Without
-        it that array comes back empty on every line, including lines TfL is
-        currently reporting as a Part Closure, and the only record of which
-        stretch is shut is English prose in `reason`. With it, the stops arrive
-        as NaPTAN ids that match `stations.naptan_id` exactly.
-        """
+        """Live status for every tube line."""
         return list(await self._get_json("/Line/Mode/tube/Status?detail=true"))
 
+    # line_id: TfL line id, e.g. "victoria".
+    # direction: "inbound" or "outbound". Both are needed, because a
+    #     segment is directional and the two directions are not always
+    #     mirror images.
+    #
+    # A payload whose stopPointSequences each carry an ordered
+    # stopPoint list plus branchId, prevBranchIds and nextBranchIds.
     async def route_sequence(
         self, line_id: str, direction: Direction
     ) -> dict[str, Any]:
-        """The ordered stations along a line, including its branches.
-
-        Args:
-            line_id: TfL line id, e.g. "victoria".
-            direction: "inbound" or "outbound". Both are needed, because a
-                segment is directional and the two directions are not always
-                mirror images.
-
-        Returns:
-            A payload whose stopPointSequences each carry an ordered
-            stopPoint list plus branchId, prevBranchIds and nextBranchIds.
-        """
+        """The ordered stations along a line, including its branches."""
         return dict(await self._get_json(f"/Line/{line_id}/Route/Sequence/{direction}"))
 
+    # Stop point objects carrying naptanId, commonName, lat, lon and
+    # hubNaptanCode.
     async def stop_points(self, line_id: str) -> list[dict[str, Any]]:
-        """Every station on a line, with coordinates and hub membership.
-
-        Args:
-            line_id: TfL line id.
-
-        Returns:
-            Stop point objects carrying naptanId, commonName, lat, lon and
-            hubNaptanCode.
-        """
+        """Every station on a line, with coordinates and hub membership."""
         return list(await self._get_json(f"/Line/{line_id}/StopPoints"))
 
+    # A payload whose timetable.routes[].stationIntervals[].intervals[]
+    # carry stopId and timeToArrival. timeToArrival is cumulative
+    # minutes from the origin, so the gap between adjacent stations is
+    # the difference between consecutive values.
     async def timetable(self, line_id: str, from_stop_id: str) -> dict[str, Any]:
-        """The timetable from one station along a line.
-
-        Args:
-            line_id: TfL line id.
-            from_stop_id: NaPTAN id to start from.
-
-        Returns:
-            A payload whose timetable.routes[].stationIntervals[].intervals[]
-            carry stopId and timeToArrival. timeToArrival is cumulative
-            minutes from the origin, so the gap between adjacent stations is
-            the difference between consecutive values.
-        """
+        """The timetable from one station along a line."""
         return dict(await self._get_json(f"/Line/{line_id}/Timetable/{from_stop_id}"))
 
     async def station_data(self) -> StationData:
-        """Download and unpack the detailed station data archive.
-
-        Returns:
-            The two CSVs the seed reads, as lists of row dicts.
-
-        Raises:
-            TfLError: If the archive is unreadable or missing a file.
-        """
+        """Download and unpack the detailed station data archive."""
         response = await self._get("/stationdata/tfl-stationdata-detailed.zip")
         try:
             archive = zipfile.ZipFile(io.BytesIO(response.content))
@@ -330,12 +285,10 @@ class TfLClient:
             raise TfLError(f"station data archive is unreadable: {exc}") from exc
 
 
+# utf-8-sig because TfL writes a byte order mark, and without it the first
+# column name comes back as "﻿StationUniqueId" and every lookup of it
+# fails in a way that looks like missing data.
 def _read_csv(archive: zipfile.ZipFile, name: str) -> list[dict[str, str]]:
-    """Read one CSV out of the archive.
-
-    utf-8-sig because TfL writes a byte order mark, and without it the first
-    column name comes back as "﻿StationUniqueId" and every lookup of it
-    fails in a way that looks like missing data.
-    """
+    """Read one CSV out of the archive."""
     with archive.open(name) as handle:
         return list(csv.DictReader(io.TextIOWrapper(handle, encoding="utf-8-sig")))

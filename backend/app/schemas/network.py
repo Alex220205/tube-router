@@ -33,15 +33,13 @@ class NetworkSegment(BaseModel):
     seconds: int = Field(description="Ride time in seconds. Always > 0.")
 
 
+# Its own class rather than a field on StationPublic, because the search box
+# and the station detail page use that one and neither reads accessibility.
+# A field nobody reads is worse than its absence - see CODE_STYLE.md section
+# 10 - and putting it here keeps the cost with the only caller that wants
+# it.
 class NetworkStation(StationPublic):
-    """A station as the map needs it: position plus whether it is accessible.
-
-    Its own class rather than a field on StationPublic, because the search box
-    and the station detail page use that one and neither reads accessibility.
-    A field nobody reads is worse than its absence - see CODE_STYLE.md section
-    10 - and putting it here keeps the cost with the only caller that wants
-    it.
-    """
+    """A station as the map needs it: position plus whether it is accessible."""
 
     step_free: bool = Field(
         description=(

@@ -28,7 +28,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 
 const STATIONS = [
-  { id: 1, naptan_id: '940GZZLUOXC', name: 'Oxford Circus', lat: 51.5152, lon: -0.1419 },
+  {
+    id: 1,
+    naptan_id: '940GZZLUOXC',
+    name: 'Oxford Circus',
+    lat: 51.5152,
+    lon: -0.1419,
+  },
   { id: 2, naptan_id: '940GZZLUGPK', name: 'Green Park', lat: 51.5069, lon: -0.1427 },
 ]
 

@@ -41,6 +41,7 @@ from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import Depends
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from .config import get_settings
@@ -72,15 +73,10 @@ engine = create_async_engine(
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 
+# Used as a FastAPI dependency. The session is closed and its connection
+# returned to the pool on the way out, including when the handler raises.
 async def get_db() -> AsyncIterator[AsyncSession]:
-    """Yield a database session scoped to one request.
-
-    Used as a FastAPI dependency. The session is closed and its connection
-    returned to the pool on the way out, including when the handler raises.
-
-    Yields:
-        An AsyncSession bound to the shared engine.
-    """
+    """Yield a database session scoped to one request."""
     async with SessionLocal() as session:
         yield session
 
@@ -95,10 +91,16 @@ async def get_db() -> AsyncIterator[AsyncSession]:
 SessionDep = Annotated[AsyncSession, Depends(get_db)]
 
 
+# Without this the process can exit holding open sockets to Postgres, which
+# shows up as connections lingering on the server side after a restart.
 async def dispose_engine() -> None:
-    """Close every pooled connection. Called on application shutdown.
-
-    Without this the process can exit holding open sockets to Postgres, which
-    shows up as connections lingering on the server side after a restart.
-    """
+    """Close every pooled connection. Called on application shutdown."""
     await engine.dispose()
+
+
+# The cheapest possible round trip. The point is to prove the connection works
+# end to end, not to read anything. It sits beside the session it is testing,
+# so the health route can ask the question without writing any SQL itself.
+async def ping(session: AsyncSession) -> None:
+    """Make one round trip to the database, raising if it cannot."""
+    await session.execute(text("SELECT 1"))

@@ -32,6 +32,7 @@ const LOADING = 'loading'
 const REACHED = 'reached'
 const UNREACHABLE = 'unreachable'
 
+/** A small panel reporting whether the API and its database are answering. */
 export default function ApiStatus() {
   const [state, setState] = useState(LOADING)
   const [health, setHealth] = useState(null)

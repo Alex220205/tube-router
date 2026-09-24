@@ -87,47 +87,40 @@ Arrival = tuple[Node, bool]
 Cost = tuple[int, ...]
 
 
+# start: The cost of standing at the origin, and the width of every
+#     cost tuple in the search. Tuples are only comparable against
+#     others of the same shape, so this fixes both at once.
+# advance: Cost so far, the seconds this step takes, and whether it was
+#     a change, giving the cost after it.
 @dataclass(frozen=True)
 class _CostModel:
-    """How an objective measures a journey.
-
-    Attributes:
-        start: The cost of standing at the origin, and the width of every
-            cost tuple in the search. Tuples are only comparable against
-            others of the same shape, so this fixes both at once.
-        advance: Cost so far, the seconds this step takes, and whether it was
-            a change, giving the cost after it.
-    """
+    """How an objective measures a journey."""
 
     start: Cost
     advance: Callable[[Cost, int, bool], Cost]
 
 
+# The second element is a tie-break, not a preference: it only ever decides
+# between routes of identical duration. Without it the real network hands
+# back things like Snaresbrook to Barons Court in 48 minutes with three
+# changes, when a 48-minute route with one change exists - both optimal by
+# time, and the search returning whichever it reached first.
+#
+# That is not merely worse to read. It makes the answer depend on heap
+# ordering rather than on the question, so the same query could change its
+# mind after an unrelated edit to the data.
 def _by_time(cost: Cost, seconds: int, is_change: bool) -> Cost:
-    """Minimise journey time, then changes.
-
-    The second element is a tie-break, not a preference: it only ever decides
-    between routes of identical duration. Without it the real network hands
-    back things like Snaresbrook to Barons Court in 48 minutes with three
-    changes, when a 48-minute route with one change exists - both optimal by
-    time, and the search returning whichever it reached first.
-
-    That is not merely worse to read. It makes the answer depend on heap
-    ordering rather than on the question, so the same query could change its
-    mind after an unrelated edit to the data.
-    """
+    """Minimise journey time, then changes."""
     return (cost[0] + seconds, cost[1] + int(is_change))
 
 
+# Both components only ever increase, which is what keeps this valid
+# Dijkstra: the algorithm needs a cost that never decreases as a path grows,
+# or the first pop of a node stops being its true optimum. A component that
+# could decrease would break the search silently, returning plausible wrong
+# routes rather than raising.
 def _by_changes(cost: Cost, seconds: int, is_change: bool) -> Cost:
-    """Minimise changes first, then time.
-
-    Both components only ever increase, which is what keeps this valid
-    Dijkstra: the algorithm needs a cost that never decreases as a path grows,
-    or the first pop of a node stops being its true optimum. A component that
-    could decrease would break the search silently, returning plausible wrong
-    routes rather than raising.
-    """
+    """Minimise changes first, then time."""
     return (cost[0] + int(is_change), cost[1] + seconds)
 
 
@@ -141,18 +134,14 @@ _COST_MODELS: dict[Objective, _CostModel] = {
 }
 
 
+# network: The graph to search. Not modified - the search keeps its own
+#     distance and predecessor tables and never writes to the network.
+# query: Origin, destination and objective.
+#
+# A Route, or a NoRoute carrying the reason. Never a sentinel value:
+# there is no number here that could be mistaken for a journey time.
 def find_route(network: Network, query: RouteQuery) -> Route | NoRoute:
-    """Find the best route between two stations.
-
-    Args:
-        network: The graph to search. Not modified - the search keeps its own
-            distance and predecessor tables and never writes to the network.
-        query: Origin, destination and objective.
-
-    Returns:
-        A Route, or a NoRoute carrying the reason. Never a sentinel value:
-        there is no number here that could be mistaken for a journey time.
-    """
+    """Find the best route between two stations."""
     if query.origin not in network:
         return NoRoute(UNKNOWN_ORIGIN)
     if query.destination not in network:
@@ -187,6 +176,7 @@ def find_route(network: Network, query: RouteQuery) -> Route | NoRoute:
         starts = searchable.step_free_lines_at(query.origin)
 
         def accept(station_id: StationId, line: LineId) -> bool:
+            """Arrival counts only on a step-free platform at the destination."""
             return station_id == query.destination and searchable.step_free_at(
                 station_id, line
             )
@@ -194,6 +184,7 @@ def find_route(network: Network, query: RouteQuery) -> Route | NoRoute:
         starts = searchable.lines_at(query.origin)
 
         def accept(station_id: StationId, line: LineId) -> bool:
+            """Arrival counts on any platform at the destination."""
             return station_id == query.destination
 
     found = _search(searchable, query.origin, starts, accept, model)
@@ -205,6 +196,25 @@ def find_route(network: Network, query: RouteQuery) -> Route | NoRoute:
     return _build_route(searchable, query.origin, found)
 
 
+# One traversal for every objective. Only three things differ: where it may
+# begin, what counts as arriving, and how a journey is measured. "Fewest
+# changes" is not a different way of walking the graph - it is the same walk
+# measured differently, and step-free is the same walk begun and ended in
+# fewer places.
+#
+# network: The graph, already filtered. Read only.
+# origin: Where to start.
+# starts: Which lines at the origin may be boarded. Standing there you
+#     are not yet on any line, so each is a starting node at zero cost -
+#     which avoids inventing a virtual "on no line" node and the special
+#     cases that come with it.
+# accept: Given a station and the line arrived on, whether the journey
+#     is over. A plain destination check for most objectives; step-free
+#     additionally requires the platform be one you can leave.
+# model: How to measure a journey.
+#
+# The predecessor table and the node the search finished on, or None if
+# the destination cannot be reached.
 def _search(
     network: Network,
     origin: StationId,
@@ -212,30 +222,7 @@ def _search(
     accept: Callable[[StationId, LineId], bool],
     model: _CostModel,
 ) -> tuple[dict[Node, Arrival], Node] | None:
-    """Dijkstra from a set of starting platforms to the first accepted one.
-
-    One traversal for every objective. Only three things differ: where it may
-    begin, what counts as arriving, and how a journey is measured. "Fewest
-    changes" is not a different way of walking the graph - it is the same walk
-    measured differently, and step-free is the same walk begun and ended in
-    fewer places.
-
-    Args:
-        network: The graph, already filtered. Read only.
-        origin: Where to start.
-        starts: Which lines at the origin may be boarded. Standing there you
-            are not yet on any line, so each is a starting node at zero cost -
-            which avoids inventing a virtual "on no line" node and the special
-            cases that come with it.
-        accept: Given a station and the line arrived on, whether the journey
-            is over. A plain destination check for most objectives; step-free
-            additionally requires the platform be one you can leave.
-        model: How to measure a journey.
-
-    Returns:
-        The predecessor table and the node the search finished on, or None if
-        the destination cannot be reached.
-    """
+    """Dijkstra from a set of starting platforms to the first accepted one."""
     if not starts:
         return None
 
@@ -264,35 +251,52 @@ def _search(
         if accept(station_id, line):
             return came_from, node
 
-        # Riding one stop stays on the same line.
-        for edge in network.edges_from(station_id):
-            if edge.line != line:
-                continue
-            _relax(
-                heap,
-                best,
-                came_from,
-                node,
-                (edge.destination, line),
-                model.advance(cost, edge.seconds, False),
-                False,
-            )
-
-        # Changing line stays at the same station and costs walking time.
-        for interchange in network.interchanges_at(station_id):
-            if interchange.from_line != line:
-                continue
-            _relax(
-                heap,
-                best,
-                came_from,
-                node,
-                (station_id, interchange.to_line),
-                model.advance(cost, interchange.seconds, True),
-                True,
-            )
+        _expand(network, heap, best, came_from, node, cost, model)
 
     return None
+
+
+# The two ways to leave a node, which is the whole of what a journey can do:
+# ride one stop on the line you are on, or change line where you stand.
+def _expand(
+    network: Network,
+    heap: list[tuple[Cost, StationId, LineId]],
+    best: dict[Node, Cost],
+    came_from: dict[Node, Arrival],
+    node: Node,
+    cost: Cost,
+    model: _CostModel,
+) -> None:
+    """Offer every neighbour of a node to the search at its cost from here."""
+    station_id, line = node
+
+    # Riding one stop stays on the same line.
+    for edge in network.edges_from(station_id):
+        if edge.line != line:
+            continue
+        _relax(
+            heap,
+            best,
+            came_from,
+            node,
+            (edge.destination, line),
+            model.advance(cost, edge.seconds, False),
+            False,
+        )
+
+    # Changing line stays at the same station and costs walking time.
+    for interchange in network.interchanges_at(station_id):
+        if interchange.from_line != line:
+            continue
+        _relax(
+            heap,
+            best,
+            came_from,
+            node,
+            (station_id, interchange.to_line),
+            model.advance(cost, interchange.seconds, True),
+            True,
+        )
 
 
 def _relax(
@@ -317,31 +321,28 @@ def _relax(
     heapq.heappush(heap, (cost, neighbour[0], neighbour[1]))
 
 
-def _build_route(
-    network: Network, origin: StationId, finished: tuple[dict[Node, Arrival], Node]
-) -> Route:
-    """Turn the predecessor table into legs, a total and a change count.
-
-    Args:
-        network: The graph, for looking edges back up.
-        origin: Where the journey started.
-        finished: The predecessor table and the node the search ended on.
-
-    Returns:
-        The assembled Route.
-    """
-    came_from, node = finished
-
-    # Walk back to the start, collecting each step and whether it was a
-    # change. Reversed at the end rather than inserting at the front, which
-    # the 2021 code did at line 564 - O(n^2) on a list, though at tube scale
-    # that was never the problem with it.
+# Reversed at the end rather than inserting at the front, which the 2021 code
+# did at line 564 - O(n^2) on a list, though at tube scale that was never the
+# problem with it.
+def _walk_back(
+    came_from: dict[Node, Arrival], node: Node
+) -> list[tuple[Node, Node, bool]]:
+    """Every step from the origin to this node, and whether each was a change."""
     steps: list[tuple[Node, Node, bool]] = []
     while node in came_from:
         previous, was_change = came_from[node]
         steps.append((previous, node, was_change))
         node = previous
     steps.reverse()
+    return steps
+
+
+def _build_route(
+    network: Network, origin: StationId, finished: tuple[dict[Node, Arrival], Node]
+) -> Route:
+    """Turn the predecessor table into legs, a total and a change count."""
+    came_from, node = finished
+    steps = _walk_back(came_from, node)
 
     legs: list[Leg] = []
     stations: list[StationId] = [origin]
@@ -395,17 +396,11 @@ def _build_route(
     )
 
 
+# network: The graph, which holds platform accessibility.
+# legs: The assembled journey. Empty for origin == destination, which is
+#     step-free because it involves no travelling.
 def _ends_are_step_free(network: Network, legs: list[Leg]) -> bool:
-    """Whether you can board at the start and alight at the end.
-
-    Args:
-        network: The graph, which holds platform accessibility.
-        legs: The assembled journey. Empty for origin == destination, which is
-            step-free because it involves no travelling.
-
-    Returns:
-        True when both end platforms are reachable step-free.
-    """
+    """Whether you can board at the start and alight at the end."""
     if not legs:
         return True
     boarding = network.step_free_at(legs[0].stations[0], legs[0].line)
@@ -413,31 +408,25 @@ def _ends_are_step_free(network: Network, legs: list[Leg]) -> bool:
     return boarding and alighting
 
 
+# LookupError: If no such edge exists, which would mean the predecessor
+#     table disagrees with the graph - a bug in this file rather than
+#     bad input.
 def _find_edge(
     network: Network, origin: StationId, destination: StationId, line: LineId
 ) -> Edge:
-    """The edge the search used for one hop.
-
-    Raises:
-        LookupError: If no such edge exists, which would mean the predecessor
-            table disagrees with the graph - a bug in this file rather than
-            bad input.
-    """
+    """The edge the search used for one hop."""
     for edge in network.edges_from(origin):
         if edge.destination == destination and edge.line == line:
             return edge
     raise LookupError(f"no {line} edge from {origin} to {destination}")
 
 
+# LookupError: As above - an inconsistency between the search and the
+#     graph, not a missing route.
 def _find_interchange(
     network: Network, station_id: StationId, from_line: LineId, to_line: LineId
 ) -> Interchange:
-    """The interchange the search used for one change.
-
-    Raises:
-        LookupError: As above - an inconsistency between the search and the
-            graph, not a missing route.
-    """
+    """The interchange the search used for one change."""
     for interchange in network.interchanges_at(station_id):
         if interchange.from_line == from_line and interchange.to_line == to_line:
             return interchange

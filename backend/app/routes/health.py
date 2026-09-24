@@ -23,47 +23,26 @@ WHAT CHANGED AND WHY
 from typing import Literal
 
 from fastapi import APIRouter
-from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from ..core.config import SettingsDep
-from ..core.database import SessionDep
-from ..schemas.health import HealthResponse
+from app.core.config import SettingsDep
+from app.core.database import SessionDep, ping
+from app.routes import COMMON_RESPONSES
+from app.schemas.health import HealthResponse
 
 router = APIRouter(prefix="/health", tags=["health"])
-
-# Documented on every route so the generated OpenAPI page lists what a client
-# can actually receive, rather than only the happy path. Shared because these
-# five mean the same thing everywhere in the API.
-responses = {
-    400: {"description": "Bad Request"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    500: {"description": "Internal Server Error"},
-    503: {"description": "Service Unavailable"},
-}
 
 
 @router.get(
     "",
     response_model=HealthResponse,
-    responses={**responses, 200: {"description": "OK"}},
+    responses={**COMMON_RESPONSES, 200: {"description": "OK"}},
 )
 async def get_health(session: SessionDep, settings: SettingsDep) -> HealthResponse:
-    """Report service and database status.
-
-    Args:
-        session: Session for the reachability check. Injected per request.
-        settings: Application settings, for the version string.
-
-    Returns:
-        status "ok" when Postgres answered, "degraded" when it did not.
-    """
+    """Report service and database status."""
     database: Literal["ok", "unreachable"] = "ok"
     try:
-        # Cheapest possible round trip. The point is to prove the connection
-        # works end to end, not to read anything.
-        await session.execute(text("SELECT 1"))
+        await ping(session)
     except (SQLAlchemyError, OSError):
         # Narrow on purpose: a driver or socket failure means "unreachable",
         # which is the answer this endpoint exists to give. Anything else is

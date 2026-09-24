@@ -35,17 +35,15 @@ from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base
 
 
+# A native Postgres enum rather than a lookup table: four values, a fixed
+# set, no attributes of their own, so a table would be a join for nothing.
+# The cost is that adding a value later needs an explicit ALTER TYPE in a
+# migration, which is acceptable for a set this stable.
+#
+# Only TUBE is used in Phase 2 - the network is seeded tube-first - but the
+# others are declared now so adding them is data rather than a migration.
 class TransportMode(enum.Enum):
-    """The kinds of service a line can be.
-
-    A native Postgres enum rather than a lookup table: four values, a fixed
-    set, no attributes of their own, so a table would be a join for nothing.
-    The cost is that adding a value later needs an explicit ALTER TYPE in a
-    migration, which is acceptable for a set this stable.
-
-    Only TUBE is used in Phase 2 - the network is seeded tube-first - but the
-    others are declared now so adding them is data rather than a migration.
-    """
+    """The kinds of service a line can be."""
 
     TUBE = "tube"
     OVERGROUND = "overground"

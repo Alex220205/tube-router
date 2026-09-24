@@ -36,20 +36,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 @dataclass(frozen=True)
 class CheckResult:
+    """One post-seed check: its name, whether it passed, and why."""
+
     name: str
     passed: bool
     detail: str
 
 
 async def run_all(session: AsyncSession) -> list[CheckResult]:
-    """Run every post-seed check.
-
-    Args:
-        session: A session on the freshly seeded database.
-
-    Returns:
-        One result per check, in the order they ran.
-    """
+    """Run every post-seed check."""
     return [
         await _stations_have_coordinates(session),
         await _segments_reference_real_stations(session),
@@ -62,11 +57,13 @@ async def run_all(session: AsyncSession) -> list[CheckResult]:
 
 
 async def _scalar(session: AsyncSession, sql: str) -> int:
+    """Run a counting query and return the single number it produces."""
     result = await session.execute(text(sql))
     return int(result.scalar_one())
 
 
 async def _stations_have_coordinates(session: AsyncSession) -> CheckResult:
+    """Check that every station has a location."""
     missing = await _scalar(
         session, "SELECT count(*) FROM stations WHERE location IS NULL"
     )
@@ -80,6 +77,7 @@ async def _stations_have_coordinates(session: AsyncSession) -> CheckResult:
 
 
 async def _segments_reference_real_stations(session: AsyncSession) -> CheckResult:
+    """Check that every segment starts and ends at a real station."""
     orphans = await _scalar(
         session,
         """
@@ -98,6 +96,7 @@ async def _segments_reference_real_stations(session: AsyncSession) -> CheckResul
 
 
 async def _every_line_has_segments(session: AsyncSession) -> CheckResult:
+    """Check that no line was written without any track."""
     empty = await _scalar(
         session,
         """
@@ -115,6 +114,7 @@ async def _every_line_has_segments(session: AsyncSession) -> CheckResult:
 
 
 async def _naptan_ids_are_unique(session: AsyncSession) -> CheckResult:
+    """Check that no NaPTAN id appears twice."""
     duplicates = await _scalar(
         session,
         "SELECT count(*) FROM (SELECT naptan_id FROM stations "
@@ -126,6 +126,7 @@ async def _naptan_ids_are_unique(session: AsyncSession) -> CheckResult:
 
 
 async def _durations_are_positive(session: AsyncSession) -> CheckResult:
+    """Check that every segment takes a positive number of seconds."""
     bad = await _scalar(
         session,
         "SELECT (SELECT count(*) FROM segments WHERE seconds <= 0) "
@@ -139,6 +140,7 @@ async def _durations_are_positive(session: AsyncSession) -> CheckResult:
 
 
 async def _every_station_serves_a_line(session: AsyncSession) -> CheckResult:
+    """Check that no station is stranded without a line."""
     stranded = await _scalar(
         session,
         """
@@ -154,14 +156,12 @@ async def _every_station_serves_a_line(session: AsyncSession) -> CheckResult:
     )
 
 
+# Treated as undirected: the question is whether the network hangs
+# together, not whether every individual segment has a reverse. A station
+# you can reach but never leave is caught by the directional checks
+# elsewhere.
 async def _graph_is_connected(session: AsyncSession) -> CheckResult:
-    """The check the 2021 data fails today.
-
-    Treated as undirected: the question is whether the network hangs
-    together, not whether every individual segment has a reverse. A station
-    you can reach but never leave is caught by the directional checks
-    elsewhere.
-    """
+    """The check the 2021 data fails today."""
     result = await session.execute(
         text("SELECT origin_station_id, destination_station_id FROM segments")
     )

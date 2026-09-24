@@ -57,6 +57,8 @@ from typing import Any
 
 import httpx
 
+from app.schemas.places import Place
+
 TOO_MANY_REQUESTS = 429
 
 # Google does not send Retry-After on 429 for these APIs, so there is nothing
@@ -147,52 +149,36 @@ UK_ONLY = "country:GB"
 LONDON_BOUNDS = "51.28,-0.51|51.70,0.33"
 
 
+# address: Google's formatted address, which is what a user recognises.
+#     "British Museum" comes back as "Great Russell St, London WC1B
+#     3DG, UK", and that is the string to show when asking which of
+#     several matches they meant.
+# latitude: WGS84.
+# longitude: WGS84.
 @dataclass(frozen=True)
 class GeocodedPlace:
-    """A place name resolved to a point on the ground.
-
-    Attributes:
-        address: Google's formatted address, which is what a user recognises.
-            "British Museum" comes back as "Great Russell St, London WC1B
-            3DG, UK", and that is the string to show when asking which of
-            several matches they meant.
-        latitude: WGS84.
-        longitude: WGS84.
-    """
+    """A place name resolved to a point on the ground."""
 
     address: str
     latitude: float
     longitude: float
 
 
-@dataclass(frozen=True)
-class Place:
-    """One nearby place, flattened out of Google's nested response.
-
-    Frozen for the same reason StationData is: it crosses the boundary out of
-    this module and nothing downstream has any business editing it.
-
-    `metres` is straight line from the station, computed here rather than
-    asked for - Google does not return a distance, and the coordinates needed
-    to work one out are already in the field mask and already paid for.
-    """
-
-    name: str
-    address: str | None
-    rating: float | None
-    ratings: int | None
-    metres: int | None
-    # True only when Google says so. None means nobody has recorded it, which
-    # is NOT the same as "no" and must never be rendered as one - see the
-    # schema for why that distinction is load bearing.
-    wheelchair_entrance: bool | None
-    website: str | None
-    maps_url: str | None
-
-
 class GoogleMapsClient:
-    """Reads Google Places and Street View. Knows nothing about this schema."""
+    """Reads Google Places and Street View, retrying what is worth retrying."""
 
+    # places_base_url: Root of the Places API (New).
+    # street_view_base_url: Root of the Street View Static API. Google
+    #     splits these across two hosts.
+    # geocoding_base_url: Root of the Geocoding API. Same host as
+    #     Street View today, and named separately because Google has
+    #     moved one of these once already.
+    # api_key: Blank means the feature is off. Nothing is requested and
+    #     every method returns an empty answer, which is what
+    #     `configured` exists to let callers report honestly.
+    # timeout_seconds: Applied per attempt, not to the total.
+    # max_attempts: Total attempts including the first.
+    # transport: Injected by tests. None means a real network.
     def __init__(
         self,
         *,
@@ -204,22 +190,7 @@ class GoogleMapsClient:
         max_attempts: int = 3,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        """Build a client.
-
-        Args:
-            places_base_url: Root of the Places API (New).
-            street_view_base_url: Root of the Street View Static API. Google
-                splits these across two hosts.
-            geocoding_base_url: Root of the Geocoding API. Same host as
-                Street View today, and named separately because Google has
-                moved one of these once already.
-            api_key: Blank means the feature is off. Nothing is requested and
-                every method returns an empty answer, which is what
-                `configured` exists to let callers report honestly.
-            timeout_seconds: Applied per attempt, not to the total.
-            max_attempts: Total attempts including the first.
-            transport: Injected by tests. None means a real network.
-        """
+        """Build a client."""
         self._places_base_url = places_base_url.rstrip("/")
         self._street_view_base_url = street_view_base_url.rstrip("/")
         self._geocoding_base_url = geocoding_base_url.rstrip("/")
@@ -231,20 +202,20 @@ class GoogleMapsClient:
             follow_redirects=True,
         )
 
+    # Checked by callers before doing anything, so that "no key" is a state
+    # the service reports rather than an error it raises. The project runs
+    # without one, as it already does without a TfL key.
     @property
     def configured(self) -> bool:
-        """Whether there is a key at all.
-
-        Checked by callers before doing anything, so that "no key" is a state
-        the service reports rather than an error it raises. The project runs
-        without one, as it already does without a TfL key.
-        """
+        """Whether there is a key at all."""
         return bool(self._api_key)
 
     async def __aenter__(self) -> "GoogleMapsClient":
+        """Open the client for an `async with` block."""
         return self
 
     async def __aexit__(self, *exc_info: object) -> None:
+        """Close the underlying HTTP client on the way out."""
         await self.aclose()
 
     async def aclose(self) -> None:
@@ -253,24 +224,15 @@ class GoogleMapsClient:
 
     # --- the request itself --------------------------------------------------
 
+    # The loop is deliberately the same shape as TfLClient._get rather than
+    # shared with it. Extracting it would mean editing a module the seed,
+    # the poller and nineteen tests depend on, to save twenty lines here.
+    # Copied code is tested code: the retry paths have their own tests.
+    #
+    # request: Built by the caller, so that a POST body and a GET query
+    #     go through the same retry policy.
     async def _send(self, request: httpx.Request) -> httpx.Response:
-        """Send a prepared request, retrying transport failures, 5xx and 429.
-
-        Args:
-            request: Built by the caller, so that a POST body and a GET query
-                go through the same retry policy.
-
-        Returns:
-            The successful response.
-
-        Raises:
-            PlacesError: On a 4xx other than 429, or once attempts run out.
-
-        The loop is deliberately the same shape as TfLClient._get rather than
-        shared with it. Extracting it would mean editing a module the seed,
-        the poller and nineteen tests depend on, to save twenty lines here.
-        Copied code is tested code: the retry paths have their own tests.
-        """
+        """Send a prepared request, retrying transport failures, 5xx and 429."""
         label = f"{request.method} {request.url.path}"
         last: Exception | None = None
 
@@ -312,6 +274,21 @@ class GoogleMapsClient:
 
     # --- endpoints -----------------------------------------------------------
 
+    # rankPreference is DISTANCE rather than the default POPULARITY. The
+    # alternative would mean computing distances here and printing a
+    # walking time this service cannot actually know - Google orders by
+    # straight line too, but ordering is a weaker claim than a number.
+    #
+    # latitude: WGS84.
+    # longitude: WGS84.
+    # types: Google place types, from one entry in KINDS. Several, not
+    #     one, because a category is a human idea and Google's types
+    #     are narrower than it.
+    # radius_metres: Google accepts 0 to 50,000.
+    # max_results: Google accepts 1 to 20.
+    #
+    # Up to max_results places, nearest first. Empty when Google found
+    # nothing, which is a real answer and not a failure.
     async def nearby(
         self,
         *,
@@ -321,29 +298,7 @@ class GoogleMapsClient:
         radius_metres: float = 1500.0,
         max_results: int = 8,
     ) -> list[Place]:
-        """Places of several related types near a point, nearest first.
-
-        Args:
-            latitude: WGS84.
-            longitude: WGS84.
-            types: Google place types, from one entry in KINDS. Several, not
-                one, because a category is a human idea and Google's types
-                are narrower than it.
-            radius_metres: Google accepts 0 to 50,000.
-            max_results: Google accepts 1 to 20.
-
-        Returns:
-            Up to max_results places, nearest first. Empty when Google found
-            nothing, which is a real answer and not a failure.
-
-        Raises:
-            PlacesError: If Google could not be reached or answered oddly.
-
-        rankPreference is DISTANCE rather than the default POPULARITY. The
-        alternative would mean computing distances here and printing a
-        walking time this service cannot actually know - Google orders by
-        straight line too, but ordering is a weaker claim than a number.
-        """
+        """Places of several related types near a point, nearest first."""
         if not self.configured:
             # No key, no request. This is the line that keeps an
             # unconfigured deployment from calling a billed API on every
@@ -385,27 +340,20 @@ class GoogleMapsClient:
             _place(entry, latitude, longitude) for entry in payload.get("places", [])
         ]
 
+    # EVERY match is returned, not the best one. "High Street" resolves to
+    # seven different places in Britain and picking the first silently is
+    # the failure this project has avoided since Phase 3: an answer that
+    # looks right, is wrong, and gives nobody a way to tell. The caller
+    # shows them and lets a person choose.
+    #
+    # query: Whatever someone typed. "British Museum", a postcode, an
+    #     address.
+    # limit: How many matches to keep.
+    #
+    # Matches, most confident first, biased to London. Empty when
+    # Google recognised nothing and when there is no key.
     async def geocode(self, query: str, *, limit: int = 5) -> list[GeocodedPlace]:
-        """Turn typed text into points on the ground.
-
-        Args:
-            query: Whatever someone typed. "British Museum", a postcode, an
-                address.
-            limit: How many matches to keep.
-
-        Returns:
-            Matches, most confident first, biased to London. Empty when
-            Google recognised nothing and when there is no key.
-
-        Raises:
-            PlacesError: If Google could not be reached.
-
-        EVERY match is returned, not the best one. "High Street" resolves to
-        seven different places in Britain and picking the first silently is
-        the failure this project has avoided since Phase 3: an answer that
-        looks right, is wrong, and gives nobody a way to tell. The caller
-        shows them and lets a person choose.
-        """
+        """Turn typed text into points on the ground."""
         if not self.configured:
             return []
 
@@ -429,7 +377,7 @@ class GoogleMapsClient:
         # Geocoding answers 200 with a status field rather than an HTTP error,
         # so _send cannot have caught this. ZERO_RESULTS is an ordinary
         # answer - the text matched nothing - and anything else is a problem
-        # worth raising so the route can log it.
+        # worth raising so services/lookups.py can log it.
         status = payload.get("status")
         if status == "ZERO_RESULTS":
             return []
@@ -438,43 +386,20 @@ class GoogleMapsClient:
                 f"geocode returned {status}: {payload.get('error_message', '')}"
             )
 
-        found = []
-        for entry in payload.get("results", [])[:limit]:
-            location = (entry.get("geometry") or {}).get("location") or {}
-            if location.get("lat") is None or location.get("lng") is None:
-                continue
-            found.append(
-                GeocodedPlace(
-                    address=entry.get("formatted_address", query),
-                    latitude=location["lat"],
-                    longitude=location["lng"],
-                )
-            )
-        return found
+        return _geocoded(payload.get("results", [])[:limit], query)
 
+    # The metadata call first is not an optimisation, it is the difference
+    # between paying for a photograph and paying for a grey rectangle.
+    # Google charge for the image whether or not coverage exists, and
+    # charge nothing for asking: "metadata requests are available at no
+    # charge. No quota is consumed."
+    #
+    # JPEG bytes, or None when Google has no imagery there and when
+    # there is no key.
     async def street_view(
         self, *, latitude: float, longitude: float, size: str = "400x200"
     ) -> bytes | None:
-        """A photograph of the street at a point, or None if there is none.
-
-        Args:
-            latitude: WGS84.
-            longitude: WGS84.
-            size: Google's `size` parameter, width x height in pixels.
-
-        Returns:
-            JPEG bytes, or None when Google has no imagery there and when
-            there is no key.
-
-        Raises:
-            PlacesError: If Google could not be reached.
-
-        The metadata call first is not an optimisation, it is the difference
-        between paying for a photograph and paying for a grey rectangle.
-        Google charge for the image whether or not coverage exists, and
-        charge nothing for asking: "metadata requests are available at no
-        charge. No quota is consumed."
-        """
+        """A photograph of the street at a point, or None if there is none."""
         if not self.configured:
             return None
 
@@ -514,13 +439,14 @@ class GoogleMapsClient:
         return image.content
 
 
+# Every field is optional on Google's side even when requested in the mask,
+# so each is read defensively. A place with no name is not worth showing
+# and gets an empty string the caller can drop.
+# `metres` is straight line from the station, computed here rather than asked
+# for - Google does not return a distance, and the coordinates needed to work
+# one out are already in the field mask and already paid for.
 def _place(entry: dict[str, Any], from_lat: float, from_lon: float) -> Place:
-    """One Google result, flattened, with how far it is from the station.
-
-    Every field is optional on Google's side even when requested in the mask,
-    so each is read defensively. A place with no name is not worth showing
-    and gets an empty string the caller can drop.
-    """
+    """One Google result, flattened, with how far it is from the station."""
     location = entry.get("location") or {}
     lat, lon = location.get("latitude"), location.get("longitude")
 
@@ -546,21 +472,13 @@ def _place(entry: dict[str, Any], from_lat: float, from_lon: float) -> Place:
     )
 
 
+# https only, and rejected rather than coerced. These strings come from a
+# third party and end up in an anchor's href, which is the one place a
+# `javascript:` URL becomes code running on our origin. Google does not
+# send one; the guard is here because "the API would never" is the sentence
+# that precedes every injection, and the check costs one comparison.
 def _safe_url(value: Any) -> str | None:
-    """A URL only if it is one we are willing to put in an href.
-
-    Args:
-        value: Whatever Google sent, which is a string in practice.
-
-    Returns:
-        The URL, or None.
-
-    https only, and rejected rather than coerced. These strings come from a
-    third party and end up in an anchor's href, which is the one place a
-    `javascript:` URL becomes code running on our origin. Google does not
-    send one; the guard is here because "the API would never" is the sentence
-    that precedes every injection, and the check costs one comparison.
-    """
+    """A URL only if it is one we are willing to put in an href."""
     if isinstance(value, str) and value.startswith("https://"):
         return value
     return None
@@ -571,17 +489,15 @@ def _safe_url(value: Any) -> str | None:
 _EARTH_RADIUS_M = 6_371_000.0
 
 
+# Straight line, not walking distance, and the page says so. Google does
+# not return a distance from a Nearby Search and asking the Routes API for
+# a real walking time would be a second billed call per result.
+#
+# Here rather than in PostGIS, which could do it exactly: these coordinates
+# never touch the database, and a round trip per result to avoid six lines
+# of trigonometry is the wrong shape.
 def _metres_between(lat1: float, lon1: float, lat2: float, lon2: float) -> int:
-    """Great circle distance in metres, rounded.
-
-    Straight line, not walking distance, and the page says so. Google does
-    not return a distance from a Nearby Search and asking the Routes API for
-    a real walking time would be a second billed call per result.
-
-    Here rather than in PostGIS, which could do it exactly: these coordinates
-    never touch the database, and a round trip per result to avoid six lines
-    of trigonometry is the wrong shape.
-    """
+    """Great circle distance in metres, rounded."""
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
     d_phi = math.radians(lat2 - lat1)
     d_lambda = math.radians(lon2 - lon1)
@@ -591,3 +507,23 @@ def _metres_between(lat1: float, lon1: float, lat2: float, lon2: float) -> int:
         + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
     )
     return round(_EARTH_RADIUS_M * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
+
+
+# Every field is optional on Google's side, so each is read defensively, the
+# same as _place. A result with no point is no use to a journey planner and is
+# dropped rather than guessed at.
+def _geocoded(results: list[dict[str, Any]], query: str) -> list[GeocodedPlace]:
+    """Google's geocoding results as points, skipping any without one."""
+    found = []
+    for entry in results:
+        location = (entry.get("geometry") or {}).get("location") or {}
+        if location.get("lat") is None or location.get("lng") is None:
+            continue
+        found.append(
+            GeocodedPlace(
+                address=entry.get("formatted_address", query),
+                latitude=location["lat"],
+                longitude=location["lng"],
+            )
+        )
+    return found
