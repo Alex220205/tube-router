@@ -41,6 +41,7 @@ from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import Depends
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from .config import get_settings
@@ -95,3 +96,11 @@ SessionDep = Annotated[AsyncSession, Depends(get_db)]
 async def dispose_engine() -> None:
     """Close every pooled connection. Called on application shutdown."""
     await engine.dispose()
+
+
+# The cheapest possible round trip. The point is to prove the connection works
+# end to end, not to read anything. It sits beside the session it is testing,
+# so the health route can ask the question without writing any SQL itself.
+async def ping(session: AsyncSession) -> None:
+    """Make one round trip to the database, raising if it cannot."""
+    await session.execute(text("SELECT 1"))

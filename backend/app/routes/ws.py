@@ -33,10 +33,16 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.core import cache
 from app.services import status_poller
 
-router = APIRouter(tags=["status"])
+router = APIRouter(prefix="/ws", tags=["status"])
 
 
-@router.websocket("/ws/status")
+# There is no authentication and nothing is read from the client. This is a
+# broadcast of public information, and a socket that ignores whatever is
+# sent to it cannot be talked into doing anything.
+#
+# websocket: The connection, accepted here rather than by a dependency
+#     so the first message can go out before anything else happens.
+@router.websocket("/status")
 async def status_socket(websocket: WebSocket) -> None:
     """Send the current status, then every change until the client leaves."""
     await websocket.accept()

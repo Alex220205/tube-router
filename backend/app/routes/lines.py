@@ -44,3 +44,5 @@ async def list_lines(session: SessionDep) -> list[LinePublic]:
         raise HTTPException(
             status_code=503, detail="Database temporarily unavailable"
         ) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

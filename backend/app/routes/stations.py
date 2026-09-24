@@ -20,6 +20,8 @@ WHAT CHANGED AND WHY
     services/stations.py, where they can be exercised without HTTP.
 """
 
+from typing import Annotated
+
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy.exc import OperationalError
 
@@ -48,11 +50,11 @@ router = APIRouter(prefix="/stations", tags=["stations"])
 )
 async def search_stations(
     session: SessionDep,
-    q: str | None = Query(
-        default=None,
-        description="Substring of the station name. Blank returns everything.",
-    ),
-    limit: int = Query(default=50, ge=1, le=200, description="Maximum results."),
+    q: Annotated[
+        str | None,
+        Query(description="Substring of the station name. Blank returns everything."),
+    ] = None,
+    limit: Annotated[int, Query(ge=1, le=200, description="Maximum results.")] = 50,
 ) -> list[StationPublic]:
     """Search stations by name."""
     try:
@@ -62,6 +64,8 @@ async def search_stations(
         raise HTTPException(
             status_code=503, detail="Database temporarily unavailable"
         ) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get(
@@ -97,3 +101,5 @@ async def get_station(station_id: int, session: SessionDep) -> StationRead:
         raise HTTPException(
             status_code=503, detail="Database temporarily unavailable"
         ) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
