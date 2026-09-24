@@ -386,19 +386,7 @@ class GoogleMapsClient:
                 f"geocode returned {status}: {payload.get('error_message', '')}"
             )
 
-        found = []
-        for entry in payload.get("results", [])[:limit]:
-            location = (entry.get("geometry") or {}).get("location") or {}
-            if location.get("lat") is None or location.get("lng") is None:
-                continue
-            found.append(
-                GeocodedPlace(
-                    address=entry.get("formatted_address", query),
-                    latitude=location["lat"],
-                    longitude=location["lng"],
-                )
-            )
-        return found
+        return _geocoded(payload.get("results", [])[:limit], query)
 
     # The metadata call first is not an optimisation, it is the difference
     # between paying for a photograph and paying for a grey rectangle.
@@ -519,3 +507,23 @@ def _metres_between(lat1: float, lon1: float, lat2: float, lon2: float) -> int:
         + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
     )
     return round(_EARTH_RADIUS_M * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
+
+
+# Every field is optional on Google's side, so each is read defensively, the
+# same as _place. A result with no point is no use to a journey planner and is
+# dropped rather than guessed at.
+def _geocoded(results: list[dict[str, Any]], query: str) -> list[GeocodedPlace]:
+    """Google's geocoding results as points, skipping any without one."""
+    found = []
+    for entry in results:
+        location = (entry.get("geometry") or {}).get("location") or {}
+        if location.get("lat") is None or location.get("lng") is None:
+            continue
+        found.append(
+            GeocodedPlace(
+                address=entry.get("formatted_address", query),
+                latitude=location["lat"],
+                longitude=location["lng"],
+            )
+        )
+    return found

@@ -294,7 +294,13 @@ function LegStations({ id, label, stations, stepFree }) {
  */
 function Stop({ end, stepFree }) {
   const size = end ? 9 : 7
-  const width = stepFree ? 2.5 : end ? 2 : 1.5
+
+  // Three weights, and the last one that applies wins: a step-free ring has
+  // to read at a glance, and the end of a leg is drawn heavier than a station
+  // passed through.
+  let width = 1.5
+  if (end) width = 2
+  if (stepFree) width = 2.5
 
   return (
     <span

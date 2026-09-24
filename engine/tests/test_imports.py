@@ -130,11 +130,12 @@ def test_the_engine_imports_only_the_standard_library() -> None:
     """An allowlist, not a blocklist, with a short blocklist inside it."""
     found = offences(PACKAGE, allowed={"tube_engine"}, ban_io=True)
 
-    assert found == {}, "\n".join(
-        f"{name} imports {module}" + _why(module)
-        for name, modules in found.items()
-        for module in sorted(modules)
-    )
+    offences_found = []
+    for name, modules in found.items():
+        for module in sorted(modules):
+            offences_found.append(f"{name} imports {module}" + _why(module))
+
+    assert found == {}, "\n".join(offences_found)
 
 
 def _why(module: str) -> str:

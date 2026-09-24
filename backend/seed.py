@@ -51,6 +51,8 @@ from app.models import (
 )
 from app.services import graph_loader, seed_checks
 from app.services.seed import (
+    StationLineRow,
+    StationRow,
     complexes_from_stations,
     durations_from_timetable,
     interchange_distances,
@@ -60,8 +62,9 @@ from app.services.seed import (
     station_lines_from_sequences,
     stations_from_stop_points,
     step_free_by_station_line,
+    stop_sequences,
 )
-from app.services.tfl import TfLClient, TfLError
+from app.services.tfl import StationData, TfLClient, TfLError
 
 DIRECTIONS = ("inbound", "outbound")
 
@@ -73,6 +76,30 @@ def log(message: str) -> None:
     print(message, flush=True)
 
 
+# One timetable per branch, requested from that branch's first station. A
+# line's branches have separate timetables, and asking only from the terminus
+# would leave every branch but one without durations.
+async def _durations_for_payload(
+    tfl: TfLClient, code: str, payload: dict
+) -> dict[tuple[str, str], int]:
+    """Adjacent-station durations for every branch in one route sequence."""
+    found: dict[tuple[str, str], int] = {}
+    for stops in stop_sequences([payload]):
+        origin = stops[0]["id"]
+        try:
+            timetable = await tfl.timetable(code, origin)
+        except TfLError as exc:
+            # Some branch/direction combinations have no timetable. Those
+            # segments fall back to a default, which the seed reports; they
+            # are not a reason to abandon the run.
+            log(f"  no timetable from {origin}: {exc}")
+            continue
+        found.update(durations_from_timetable(timetable, origin))
+    return found
+
+
+# The raw payloads, untransformed. Keeping fetch separate from
+# transform is what lets the transforms be tested without a network.
 async def fetch_everything(tfl: TfLClient) -> dict[str, object]:
     """Collect every payload the seed needs, in as few requests as possible."""
     log("fetching lines ...")
@@ -91,25 +118,7 @@ async def fetch_everything(tfl: TfLClient) -> dict[str, object]:
         for direction in DIRECTIONS:
             payload = await tfl.route_sequence(code, direction)
             payloads.append(payload)
-
-            # One timetable per branch, requested from that branch's first
-            # station. A line's branches have separate timetables, and
-            # asking only from the terminus would leave every branch but one
-            # without durations.
-            for sequence in payload.get("stopPointSequences", []):
-                stops = sequence.get("stopPoint", [])
-                if not stops:
-                    continue
-                origin = stops[0]["id"]
-                try:
-                    timetable = await tfl.timetable(code, origin)
-                except TfLError as exc:
-                    # Some branch/direction combinations have no timetable.
-                    # Those segments fall back to a default, which the seed
-                    # reports; they are not a reason to abandon the run.
-                    log(f"  no timetable from {origin}: {exc}")
-                    continue
-                durations.update(durations_from_timetable(timetable, origin))
+            durations.update(await _durations_for_payload(tfl, code, payload))
 
         sequences[code] = payloads
 
@@ -129,29 +138,21 @@ async def fetch_everything(tfl: TfLClient) -> dict[str, object]:
     }
 
 
-async def write_everything(session: AsyncSession, raw: dict[str, object]) -> None:
-    """Replace the contents of the database with a freshly built network.
-
-    Everything happens in the caller's transaction, so a failure anywhere
-    leaves the previous contents intact rather than a half-built network.
-
-    Args:
-        session: Session inside an open transaction.
-        raw: Output of fetch_everything.
-    """
-    sequences: dict[str, list[dict]] = raw["sequences"]  # type: ignore[assignment]
-    durations: dict[tuple[str, str], int] = raw["durations"]  # type: ignore[assignment]
-    station_data = raw["station_data"]
-
-    # Delete in dependency order. CASCADE would do it, but naming the order
-    # makes the dependencies visible and means a new table cannot be quietly
-    # forgotten here.
+# Delete in dependency order. CASCADE would do it, but naming the order makes
+# the dependencies visible and means a new table cannot be quietly forgotten
+# here.
+async def _clear(session: AsyncSession) -> None:
+    """Empty every network table, children first."""
     log("clearing existing data ...")
     for model in (Interchange, StationLine, Segment, Station, StationComplex, Line):
         await session.execute(delete(model))
 
-    # --- lines ---------------------------------------------------------------
-    line_rows = lines_from_payload(raw["lines"])  # type: ignore[arg-type]
+
+# Each step returns the id map the later ones need. Postgres assigns those ids
+# on flush, so they can only be learned by asking for them back.
+async def _write_lines(session: AsyncSession, payload: object) -> dict[str, int]:
+    """Write every line and return its code to database id."""
+    line_rows = lines_from_payload(payload)
     session.add_all(
         [
             Line(
@@ -166,9 +167,13 @@ async def write_everything(session: AsyncSession, raw: dict[str, object]) -> Non
         for id_, code in (await session.execute(select(Line.id, Line.code))).all()
     }
     log(f"  {len(line_ids)} lines")
+    return line_ids
 
-    # --- complexes then stations ---------------------------------------------
-    station_rows = stations_from_stop_points(raw["stop_points"])  # type: ignore[arg-type]
+
+async def _write_complexes(
+    session: AsyncSession, station_rows: list[StationRow]
+) -> dict[str, int]:
+    """Write the station complexes and return each TfL hub id to its row id."""
     complex_rows = complexes_from_stations(station_rows)
     session.add_all(
         [
@@ -184,7 +189,13 @@ async def write_everything(session: AsyncSession, raw: dict[str, object]) -> Non
         ).all()
     }
     log(f"  {len(complex_ids)} station complexes")
+    return complex_ids
 
+
+async def _write_stations(
+    session: AsyncSession, station_rows: list[StationRow], complex_ids: dict[str, int]
+) -> dict[str, int]:
+    """Write every station and return its NaPTAN id to database id."""
     session.add_all(
         [
             Station(
@@ -208,9 +219,20 @@ async def write_everything(session: AsyncSession, raw: dict[str, object]) -> Non
         ).all()
     }
     log(f"  {len(station_ids)} stations")
+    return station_ids
 
-    # --- station/line membership ---------------------------------------------
-    step_free = step_free_by_station_line(station_data.platform_services)  # type: ignore[union-attr]
+
+# The rows are returned as well as written, because the interchange step is
+# derived from them rather than read back out of the table.
+async def _write_station_lines(
+    session: AsyncSession,
+    sequences: dict[str, list[dict]],
+    station_data: StationData,
+    station_ids: dict[str, int],
+    line_ids: dict[str, int],
+) -> list[StationLineRow]:
+    """Write which lines call at which stations."""
+    step_free = step_free_by_station_line(station_data.platform_services)
     station_line_rows = station_lines_from_sequences(sequences, step_free)
     session.add_all(
         [
@@ -226,8 +248,22 @@ async def write_everything(session: AsyncSession, raw: dict[str, object]) -> Non
     await session.flush()
     accessible = sum(1 for row in station_line_rows if row.step_free_to_platform)
     log(f"  {len(station_line_rows)} station/line pairs, {accessible} step-free")
+    return station_line_rows
 
-    # --- segments -------------------------------------------------------------
+
+# A segment with an end that is not among the stations just written is
+# skipped rather than failing the run. Stations come from /StopPoints and
+# segments from the route sequences, two separate TfL payloads, and
+# seed_checks afterwards confirms every segment still joins two real stations
+# and the network is one piece.
+async def _write_segments(
+    session: AsyncSession,
+    sequences: dict[str, list[dict]],
+    durations: dict[tuple[str, str], int],
+    station_ids: dict[str, int],
+    line_ids: dict[str, int],
+) -> None:
+    """Write the track between adjacent stations, line by line."""
     total_adjusted = 0
     segment_count = 0
     for code, payloads in sequences.items():
@@ -254,8 +290,16 @@ async def write_everything(session: AsyncSession, raw: dict[str, object]) -> Non
     await session.flush()
     log(f"  {segment_count} segments, {total_adjusted} floored or defaulted")
 
-    # --- interchanges ---------------------------------------------------------
-    distances = interchange_distances(station_data.step_free_interchanges)  # type: ignore[union-attr]
+
+async def _write_interchanges(
+    session: AsyncSession,
+    station_data: StationData,
+    station_line_rows: list[StationLineRow],
+    station_ids: dict[str, int],
+    line_ids: dict[str, int],
+) -> None:
+    """Write the cost of changing between every pair of lines at a station."""
+    distances = interchange_distances(station_data.step_free_interchanges)
     interchange_rows = interchanges_from_station_lines(station_line_rows, distances)
     session.add_all(
         [
@@ -277,13 +321,37 @@ async def write_everything(session: AsyncSession, raw: dict[str, object]) -> Non
     log(f"  {len(interchange_rows)} interchanges, {measured} with a measured distance")
 
 
-async def main() -> int:
-    """Fetch, write, check.
+# Everything happens in the caller's transaction, so a failure anywhere leaves
+# the previous contents intact rather than a half-built network.
+#
+# The order below is the dependency order. Nothing here moves without breaking
+# the id map the next step reads.
+async def write_everything(session: AsyncSession, raw: dict[str, object]) -> None:
+    """Replace the contents of the database with a freshly built network."""
+    sequences: dict[str, list[dict]] = raw["sequences"]
+    durations: dict[tuple[str, str], int] = raw["durations"]
+    station_data: StationData = raw["station_data"]
 
-    Returns:
-        0 when every check passed, 1 otherwise. A non-zero exit is what makes
-        this usable from a script or from CI.
-    """
+    await _clear(session)
+    line_ids = await _write_lines(session, raw["lines"])
+
+    station_rows = stations_from_stop_points(raw["stop_points"])
+    complex_ids = await _write_complexes(session, station_rows)
+    station_ids = await _write_stations(session, station_rows, complex_ids)
+
+    station_line_rows = await _write_station_lines(
+        session, sequences, station_data, station_ids, line_ids
+    )
+    await _write_segments(session, sequences, durations, station_ids, line_ids)
+    await _write_interchanges(
+        session, station_data, station_line_rows, station_ids, line_ids
+    )
+
+
+# 0 when every check passed, 1 otherwise. A non-zero exit is what makes
+# this usable from a script or from CI.
+async def main() -> int:
+    """Fetch, write, check."""
     settings = get_settings()
     log(f"seeding {settings.database_url.rsplit('@', 1)[-1]}")
 
@@ -303,31 +371,40 @@ async def main() -> int:
             await write_everything(session, raw)
         log("committed")
 
-        # The API holds a built routing graph. Deleting the row cache is not
-        # enough on its own - a process that has already built its graph never
-        # looks at Redis again, so Phase 6 shipped an invalidation that did
-        # nothing for a running service (docs/ISSUES.md #9).
-        #
-        # Bumping the generation is what a running process actually notices,
-        # within graph_loader.GENERATION_CHECK_SECONDS. The rows go too, or the
-        # rebuild would read the stale copy it was just told to discard.
-        await cache.delete(graph_loader.CACHE_KEY)
-        generation = await cache.bump_generation()
-        if generation is None:
-            log("WARNING: could not reach Redis; a running API will serve the")
-            log("         old network until it is restarted")
-        else:
-            log(f"network generation now {generation}")
+        await _tell_running_api()
 
         log("\nchecks:")
         results = await seed_checks.run_all(session)
 
+    await engine.dispose()
+    return _report(results)
+
+
+# The API holds a built routing graph. Deleting the row cache is not enough on
+# its own - a process that has already built its graph never looks at Redis
+# again, so Phase 6 shipped an invalidation that did nothing for a running
+# service (docs/ISSUES.md #9).
+#
+# Bumping the generation is what a running process actually notices, within
+# graph_loader.GENERATION_CHECK_SECONDS. The rows go too, or the rebuild would
+# read the stale copy it was just told to discard.
+async def _tell_running_api() -> None:
+    """Make a running API rebuild its graph from what was just written."""
+    await cache.delete(graph_loader.CACHE_KEY)
+    generation = await cache.bump_generation()
+    if generation is None:
+        log("WARNING: could not reach Redis; a running API will serve the")
+        log("         old network until it is restarted")
+    else:
+        log(f"network generation now {generation}")
+
+
+def _report(results: list[seed_checks.CheckResult]) -> int:
+    """Print each check and return the exit code: 0 if all passed, 1 if not."""
     failed = [result for result in results if not result.passed]
     for result in results:
         mark = "PASS" if result.passed else "FAIL"
         log(f"  [{mark}] {result.name} - {result.detail}")
-
-    await engine.dispose()
 
     if failed:
         log(f"\n{len(failed)} check(s) failed. The data is not usable.")

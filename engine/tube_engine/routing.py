@@ -251,35 +251,52 @@ def _search(
         if accept(station_id, line):
             return came_from, node
 
-        # Riding one stop stays on the same line.
-        for edge in network.edges_from(station_id):
-            if edge.line != line:
-                continue
-            _relax(
-                heap,
-                best,
-                came_from,
-                node,
-                (edge.destination, line),
-                model.advance(cost, edge.seconds, False),
-                False,
-            )
-
-        # Changing line stays at the same station and costs walking time.
-        for interchange in network.interchanges_at(station_id):
-            if interchange.from_line != line:
-                continue
-            _relax(
-                heap,
-                best,
-                came_from,
-                node,
-                (station_id, interchange.to_line),
-                model.advance(cost, interchange.seconds, True),
-                True,
-            )
+        _expand(network, heap, best, came_from, node, cost, model)
 
     return None
+
+
+# The two ways to leave a node, which is the whole of what a journey can do:
+# ride one stop on the line you are on, or change line where you stand.
+def _expand(
+    network: Network,
+    heap: list[tuple[Cost, StationId, LineId]],
+    best: dict[Node, Cost],
+    came_from: dict[Node, Arrival],
+    node: Node,
+    cost: Cost,
+    model: _CostModel,
+) -> None:
+    """Offer every neighbour of a node to the search at its cost from here."""
+    station_id, line = node
+
+    # Riding one stop stays on the same line.
+    for edge in network.edges_from(station_id):
+        if edge.line != line:
+            continue
+        _relax(
+            heap,
+            best,
+            came_from,
+            node,
+            (edge.destination, line),
+            model.advance(cost, edge.seconds, False),
+            False,
+        )
+
+    # Changing line stays at the same station and costs walking time.
+    for interchange in network.interchanges_at(station_id):
+        if interchange.from_line != line:
+            continue
+        _relax(
+            heap,
+            best,
+            came_from,
+            node,
+            (station_id, interchange.to_line),
+            model.advance(cost, interchange.seconds, True),
+            True,
+        )
 
 
 def _relax(
@@ -304,31 +321,28 @@ def _relax(
     heapq.heappush(heap, (cost, neighbour[0], neighbour[1]))
 
 
-def _build_route(
-    network: Network, origin: StationId, finished: tuple[dict[Node, Arrival], Node]
-) -> Route:
-    """Turn the predecessor table into legs, a total and a change count.
-
-    Args:
-        network: The graph, for looking edges back up.
-        origin: Where the journey started.
-        finished: The predecessor table and the node the search ended on.
-
-    Returns:
-        The assembled Route.
-    """
-    came_from, node = finished
-
-    # Walk back to the start, collecting each step and whether it was a
-    # change. Reversed at the end rather than inserting at the front, which
-    # the 2021 code did at line 564 - O(n^2) on a list, though at tube scale
-    # that was never the problem with it.
+# Reversed at the end rather than inserting at the front, which the 2021 code
+# did at line 564 - O(n^2) on a list, though at tube scale that was never the
+# problem with it.
+def _walk_back(
+    came_from: dict[Node, Arrival], node: Node
+) -> list[tuple[Node, Node, bool]]:
+    """Every step from the origin to this node, and whether each was a change."""
     steps: list[tuple[Node, Node, bool]] = []
     while node in came_from:
         previous, was_change = came_from[node]
         steps.append((previous, node, was_change))
         node = previous
     steps.reverse()
+    return steps
+
+
+def _build_route(
+    network: Network, origin: StationId, finished: tuple[dict[Node, Arrival], Node]
+) -> Route:
+    """Turn the predecessor table into legs, a total and a change count."""
+    came_from, node = finished
+    steps = _walk_back(came_from, node)
 
     legs: list[Leg] = []
     stations: list[StationId] = [origin]

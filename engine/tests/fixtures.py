@@ -44,19 +44,21 @@ def station(station_id: str) -> Station:
 # because a default here would make the step-free tests pass for the wrong
 # reason - the interesting cases are the ones where a platform is missing.
 def every_platform(network_lines: dict[str, list[str]]) -> list[tuple[str, str]]:
-    """Declare which platforms are step-free, as {station: [lines]}.
-
-    Spelled out per fixture rather than defaulted to "all accessible",
-    because a default here would make the step-free tests pass for the wrong
-    reason - the interesting cases are the ones where a platform is missing.
-    """
-    return [
-        (station_id, line)
-        for station_id, lines in network_lines.items()
-        for line in lines
-    ]
+    """Declare which platforms are step-free, as {station: [lines]}."""
+    platforms = []
+    for station_id, lines in network_lines.items():
+        for line in lines:
+            platforms.append((station_id, line))
+    return platforms
 
 
+# Mirrored by default because most track runs both ways and writing each
+# direction out doubles the noise in every fixture. `both_ways=False` is for
+# the cases where the asymmetry is the point.
+#
+# There is no step_free argument. A ride is always step-free once you are
+# aboard; accessibility belongs to the platforms at either end and to the
+# changes in between.
 def ride(
     origin: str,
     destination: str,

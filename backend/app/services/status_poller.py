@@ -105,6 +105,46 @@ async def poll_once(tfl: TfLClient) -> list[LineStatus] | None:
     return statuses
 
 
+# Returns how long to wait before the next poll, and what to compare the next
+# result against. Both come back together because a failed poll must not
+# overwrite the last good statuses.
+async def _poll_and_publish(
+    tfl: TfLClient,
+    previous: list[LineStatus] | None,
+    poll_seconds: float,
+) -> tuple[float, list[LineStatus] | None]:
+    """One turn of the poll loop: fetch, publish on a change, say when to return."""
+    try:
+        statuses = await poll_once(tfl)
+
+        if statuses is None:
+            return RETRY_AFTER_SECONDS, previous
+        if statuses != previous:
+            # Only on a change. The comparison works because
+            # statuses_from_payload sorts by line code, so an unchanged
+            # network produces an equal list rather than a reordered one.
+            await cache.publish(STATUS_CHANNEL, to_payload(statuses))
+            return poll_seconds, statuses
+        return poll_seconds, previous
+
+    except asyncio.CancelledError:
+        # Shutdown. Re-raised so the task actually ends rather than being
+        # swallowed by the catch-all below and looping forever.
+        raise
+    except Exception:
+        # Deliberately broad, and the reason is the module docstring: there is
+        # no caller to propagate to. Anything uncaught here kills the task
+        # permanently and silently.
+        return RETRY_AFTER_SECONDS, previous
+
+
+# Every failure is contained. TfL being down, slow, or serving HTML must not
+# end this task, because a task that dies takes live status with it and
+# leaves no trace on the page - the status simply stops changing, which
+# looks exactly like a quiet day on the Underground.
+#
+# stop: Set to end the loop. Tests pass one; the application relies on
+#     task cancellation instead.
 async def run(stop: asyncio.Event | None = None) -> None:
     """Poll until told to stop. Started from the application's lifespan."""
     settings = get_settings()
@@ -123,29 +163,9 @@ async def run(stop: asyncio.Event | None = None) -> None:
         min_request_interval_seconds=settings.tfl_min_request_interval_seconds,
     ) as tfl:
         while not stop.is_set():
-            delay = settings.tfl_status_poll_seconds
-            try:
-                statuses = await poll_once(tfl)
-
-                if statuses is None:
-                    delay = RETRY_AFTER_SECONDS
-                elif statuses != previous:
-                    # Only on a change. The comparison works because
-                    # statuses_from_payload sorts by line code, so an unchanged
-                    # network produces an equal list rather than a reordered one.
-                    await cache.publish(STATUS_CHANNEL, to_payload(statuses))
-                    previous = statuses
-
-            except asyncio.CancelledError:
-                # Shutdown. Re-raised so the task actually ends rather than
-                # being swallowed by the catch-all below and looping forever.
-                raise
-            except Exception:
-                # Deliberately broad, and the reason is the module docstring:
-                # there is no caller to propagate to. Anything uncaught here
-                # kills the task permanently and silently.
-                delay = RETRY_AFTER_SECONDS
-
+            delay, previous = await _poll_and_publish(
+                tfl, previous, settings.tfl_status_poll_seconds
+            )
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(stop.wait(), timeout=delay)
 

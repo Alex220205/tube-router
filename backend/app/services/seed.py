@@ -32,6 +32,7 @@ WHAT'S NEW
 """
 
 from collections import defaultdict
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -260,6 +261,25 @@ def step_free_by_station_line(
     return result
 
 
+# TfL nests a line's route three deep: a payload per direction, a sequence
+# per branch within it, and the ordered stops within that. Every caller wants
+# the innermost level, so the walk is written once here.
+#
+# Empty sequences are dropped, because a branch with no stops is not a branch.
+def stop_sequences(
+    payloads: Iterable[dict[str, Any]],
+) -> Iterator[list[dict[str, Any]]]:
+    """Every ordered run of stops in a line's route sequence payloads."""
+    for payload in payloads:
+        for sequence in payload.get("stopPointSequences", []):
+            stops = sequence.get("stopPoint", [])
+            if stops:
+                yield stops
+
+
+# Derived from the route sequences rather than from /StopPoints, because a
+# sequence is the definitive statement that a line actually runs through a
+# station.
 def station_lines_from_sequences(
     sequences_by_line: dict[str, list[dict[str, Any]]],
     step_free: dict[tuple[str, str], bool],
@@ -267,10 +287,9 @@ def station_lines_from_sequences(
     """Work out which lines call at which stations."""
     pairs: set[tuple[str, str]] = set()
     for line_code, payloads in sequences_by_line.items():
-        for payload in payloads:
-            for sequence in payload.get("stopPointSequences", []):
-                for stop in sequence.get("stopPoint", []):
-                    pairs.add((stop["id"], line_code))
+        for stops in stop_sequences(payloads):
+            for stop in stops:
+                pairs.add((stop["id"], line_code))
 
     return [
         StationLineRow(
@@ -285,6 +304,33 @@ def station_lines_from_sequences(
 # --- segments ----------------------------------------------------------------
 
 
+# timeToArrival is cumulative minutes from the origin, so the time between
+# two adjacent stations is the difference between consecutive values. The
+# first entry is measured from the origin the timetable was requested for,
+# which is why that has to be passed in - it does not appear in the
+# intervals.
+def _gaps_between(
+    interval_set: dict[str, Any], origin_naptan: str
+) -> dict[tuple[str, str], int]:
+    """Seconds between each adjacent pair in one run of intervals."""
+    gaps: dict[tuple[str, str], int] = {}
+    previous_stop = origin_naptan
+    previous_minutes = 0.0
+
+    for interval in interval_set.get("intervals", []):
+        stop = interval.get("stopId")
+        minutes = interval.get("timeToArrival")
+        if not stop or minutes is None:
+            continue
+        gaps[(previous_stop, stop)] = round((float(minutes) - previous_minutes) * 60)
+        previous_stop = stop
+        previous_minutes = float(minutes)
+
+    return gaps
+
+
+# (origin, destination) to seconds. Empty if the payload has no
+# timetable, which TfL returns for some branch/direction combinations.
 def durations_from_timetable(
     payload: dict[str, Any], origin_naptan: str
 ) -> dict[tuple[str, str], int]:
@@ -294,17 +340,7 @@ def durations_from_timetable(
 
     for route in timetable.get("routes", []):
         for interval_set in route.get("stationIntervals", []):
-            previous_stop = origin_naptan
-            previous_minutes = 0.0
-            for interval in interval_set.get("intervals", []):
-                stop = interval.get("stopId")
-                minutes = interval.get("timeToArrival")
-                if not stop or minutes is None:
-                    continue
-                gap_seconds = round((float(minutes) - previous_minutes) * 60)
-                durations[(previous_stop, stop)] = gap_seconds
-                previous_stop = stop
-                previous_minutes = float(minutes)
+            durations.update(_gaps_between(interval_set, origin_naptan))
 
     return durations
 
@@ -327,29 +363,28 @@ def segments_from_sequences(
     rows: dict[tuple[str, str], SegmentRow] = {}
     adjusted = 0
 
-    for payload in payloads:
-        for sequence in payload.get("stopPointSequences", []):
-            stops = [stop["id"] for stop in sequence.get("stopPoint", [])]
-            for origin, destination in zip(stops, stops[1:], strict=False):
-                if origin == destination:
-                    # TfL occasionally repeats a stop at a branch join. A
-                    # self-loop is rejected by the schema and means nothing.
-                    continue
+    for stops in stop_sequences(payloads):
+        ids = [stop["id"] for stop in stops]
+        for origin, destination in zip(ids, ids[1:], strict=False):
+            if origin == destination:
+                # TfL occasionally repeats a stop at a branch join. A
+                # self-loop is rejected by the schema and means nothing.
+                continue
 
-                seconds = durations.get((origin, destination))
-                if seconds is None:
-                    seconds = DEFAULT_SEGMENT_SECONDS
-                    adjusted += 1
-                elif seconds < MIN_SEGMENT_SECONDS:
-                    seconds = MIN_SEGMENT_SECONDS
-                    adjusted += 1
+            seconds = durations.get((origin, destination))
+            if seconds is None:
+                seconds = DEFAULT_SEGMENT_SECONDS
+                adjusted += 1
+            elif seconds < MIN_SEGMENT_SECONDS:
+                seconds = MIN_SEGMENT_SECONDS
+                adjusted += 1
 
-                rows[(origin, destination)] = SegmentRow(
-                    line_code=line_code,
-                    origin_naptan=origin,
-                    destination_naptan=destination,
-                    seconds=seconds,
-                )
+            rows[(origin, destination)] = SegmentRow(
+                line_code=line_code,
+                origin_naptan=origin,
+                destination_naptan=destination,
+                seconds=seconds,
+            )
 
     return [rows[key] for key in sorted(rows)], adjusted
 
@@ -371,6 +406,22 @@ def parse_platform_id(platform_id: str) -> tuple[str, list[str]] | None:
     return station, [code for code in parts[2].split("|") if code]
 
 
+# A platform id can name several lines, separated by pipes, so one measured
+# walk becomes a pair for each line at each end. The same line at both ends
+# is not a change.
+def _different_lines(
+    from_lines: list[str], to_lines: list[str]
+) -> Iterator[tuple[str, str]]:
+    """Every ordered pair of different lines across two platform ends."""
+    for from_line in from_lines:
+        for to_line in to_lines:
+            if from_line != to_line:
+                yield from_line, to_line
+
+
+# (station, from line, to line) to distance in metres. Where a platform
+# serves several lines the distance applies to each pairing. Sparse:
+# about 114 rows cover the whole network.
 def interchange_distances(
     rows: list[dict[str, str]],
 ) -> dict[tuple[str, str, str], int]:
@@ -388,10 +439,8 @@ def interchange_distances(
             # A walk between two different stations is not an interchange in
             # this model; that is what a station complex represents.
             continue
-        for from_line in from_lines:
-            for to_line in to_lines:
-                if from_line != to_line:
-                    distances[(station, from_line, to_line)] = int(raw)
+        for from_line, to_line in _different_lines(from_lines, to_lines):
+            distances[(station, from_line, to_line)] = int(raw)
     return distances
 
 
@@ -448,6 +497,43 @@ def _shortest_walks(
     return cost
 
 
+def _changes_at(
+    serving: list[StationLineRow],
+) -> Iterator[tuple[StationLineRow, StationLineRow]]:
+    """Every ordered pair of different lines calling at one station."""
+    for source in serving:
+        for target in serving:
+            if source.line_code != target.line_code:
+                yield source, target
+
+
+# Two sources, and the order matters. A measured distance in
+# StepFreeIntechangeInfo.csv is TfL stating the change is step-free, and it is
+# authoritative where it exists - but it covers only a few hundred pairs
+# network-wide.
+#
+# Otherwise it is inferred: both platforms being step-free means the change
+# can normally be made via the lifts, which is the standard assumption in
+# accessible journey planning. It is an inference rather than a fact, and it
+# can be wrong where two accessible platforms are joined only by stairs.
+#
+# Requiring the measurement instead is the safer reading and was the original
+# rule. It marked 6 of 312 changes step-free, which left the step-free network
+# in 40-odd disconnected fragments and made the objective answer "no route"
+# for essentially every real journey. A feature that always refuses is not a
+# cautious feature, it is an absent one.
+def _step_free_change(
+    measured: bool, source: StationLineRow, target: StationLineRow
+) -> bool:
+    """Whether changing between these two platforms avoids stairs."""
+    return measured or (source.step_free_to_platform and target.step_free_to_platform)
+
+
+# The pairs are derived - if two lines call at a station you can change
+# between them - but the *cost* is not, which is why these are stored rows
+# rather than something computed at query time. A measured distance is used
+# where TfL has one; everything else gets a stated default rather than a
+# number that looks calculated but is not.
 def interchanges_from_station_lines(
     station_lines: list[StationLineRow],
     distances: dict[tuple[str, str, str], int],
@@ -463,43 +549,15 @@ def interchanges_from_station_lines(
         codes = [row.line_code for row in serving]
         cost = _shortest_walks(naptan, codes, distances)
 
-        for source in serving:
-            for target in serving:
-                if source.line_code == target.line_code:
-                    continue
-                metres = distances.get((naptan, source.line_code, target.line_code))
-                seconds = cost[(source.line_code, target.line_code)]
-                rows.append(
-                    InterchangeRow(
-                        naptan_id=naptan,
-                        from_line_code=source.line_code,
-                        to_line_code=target.line_code,
-                        seconds=seconds,
-                        # Two sources, and the order matters. A measured
-                        # distance in StepFreeIntechangeInfo.csv is TfL
-                        # stating the change is step-free, and it is
-                        # authoritative where it exists - but it covers only
-                        # a few hundred pairs network-wide.
-                        #
-                        # Otherwise it is inferred: both platforms being
-                        # step-free means the change can normally be made via
-                        # the lifts, which is the standard assumption in
-                        # accessible journey planning. It is an inference
-                        # rather than a fact, and it can be wrong where two
-                        # accessible platforms are joined only by stairs.
-                        #
-                        # Requiring the measurement instead is the safer
-                        # reading and was the original rule. It marked 6 of
-                        # 312 changes step-free, which left the step-free
-                        # network in 40-odd disconnected fragments and made
-                        # the objective answer "no route" for essentially
-                        # every real journey. A feature that always refuses
-                        # is not a cautious feature, it is an absent one.
-                        step_free=metres is not None
-                        or (
-                            source.step_free_to_platform
-                            and target.step_free_to_platform
-                        ),
-                    )
+        for source, target in _changes_at(serving):
+            metres = distances.get((naptan, source.line_code, target.line_code))
+            rows.append(
+                InterchangeRow(
+                    naptan_id=naptan,
+                    from_line_code=source.line_code,
+                    to_line_code=target.line_code,
+                    seconds=cost[(source.line_code, target.line_code)],
+                    step_free=_step_free_change(metres is not None, source, target),
                 )
+            )
     return rows

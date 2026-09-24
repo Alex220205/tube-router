@@ -348,11 +348,11 @@ async def test_station_data_reads_the_two_csvs_it_needs() -> None:
     )
 
     async with client_returning(lambda r: httpx.Response(200, content=payload)) as tfl:
-        data = await tfl.station_data()
+        station_data = await tfl.station_data()
 
-    assert data.platform_services[0]["StopAreaNaptanCode"] == "940GZZLUGPK"
-    assert data.platform_services[0]["DesignatedLevelAccessPoint"] == "TRUE"
-    assert data.step_free_interchanges[0]["DistanceInMetres"] == "220"
+    assert station_data.platform_services[0]["StopAreaNaptanCode"] == "940GZZLUGPK"
+    assert station_data.platform_services[0]["DesignatedLevelAccessPoint"] == "TRUE"
+    assert station_data.step_free_interchanges[0]["DistanceInMetres"] == "220"
 
 
 async def test_station_data_strips_the_byte_order_mark() -> None:
@@ -369,9 +369,9 @@ async def test_station_data_strips_the_byte_order_mark() -> None:
     )
 
     async with client_returning(lambda r: httpx.Response(200, content=payload)) as tfl:
-        data = await tfl.station_data()
+        station_data = await tfl.station_data()
 
-    assert "PlatformUniqueId" in data.platform_services[0]
+    assert "PlatformUniqueId" in station_data.platform_services[0]
 
 
 async def test_a_corrupt_archive_is_reported_clearly() -> None:
