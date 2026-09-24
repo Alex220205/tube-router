@@ -21,7 +21,8 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Line, Segment, Station, StationLine, TransportMode
+from app.models import Segment, StationLine
+from tests.helpers import a_line, a_station
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("TEST_DATABASE_URL"),
@@ -31,25 +32,12 @@ pytestmark = pytest.mark.skipif(
 
 async def seed_tiny_network(db: AsyncSession) -> None:
     """Two stations joined both ways on one line."""
-    line = Line(
-        code="victoria", name="Victoria", mode=TransportMode.TUBE, colour="#0098D4"
-    )
-    db.add(line)
-    await db.flush()
+    line = await a_line(db, "victoria", colour="#0098D4")
+    a = await a_station(db, "A", name="Alpha Underground Station", lon=-0.1, lat=51.5)
+    b = await a_station(db, "B", name="Beta Underground Station", lon=-0.2, lat=51.6)
 
-    a = Station(
-        naptan_id="A",
-        name="Alpha Underground Station",
-        location="SRID=4326;POINT(-0.1 51.5)",
-    )
-    b = Station(
-        naptan_id="B",
-        name="Beta Underground Station",
-        location="SRID=4326;POINT(-0.2 51.6)",
-    )
-    db.add_all([a, b])
-    await db.flush()
-
+    # Two segments written out rather than both_ways, because the times
+    # differ on purpose: one test here is about each direction keeping its own.
     db.add_all(
         [
             StationLine(station_id=a.id, line_id=line.id),

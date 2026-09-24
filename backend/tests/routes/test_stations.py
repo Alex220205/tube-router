@@ -22,7 +22,8 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Line, Station, StationLine, TransportMode
+from app.models import StationLine
+from tests.helpers import a_line, a_station
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("TEST_DATABASE_URL"),
@@ -32,24 +33,21 @@ pytestmark = pytest.mark.skipif(
 
 async def seed_two_stations(db: AsyncSession) -> dict[str, int]:
     """A miniature network: two stations, one line, one of them step-free."""
-    line = Line(
-        code="victoria", name="Victoria", mode=TransportMode.TUBE, colour="#0098D4"
-    )
-    db.add(line)
-    await db.flush()
-
-    oxford = Station(
-        naptan_id="940GZZLUOXC",
+    line = await a_line(db, "victoria", colour="#0098D4")
+    oxford = await a_station(
+        db,
+        "940GZZLUOXC",
         name="Oxford Circus Underground Station",
-        location="SRID=4326;POINT(-0.141903 51.515224)",
+        lon=-0.141903,
+        lat=51.515224,
     )
-    pimlico = Station(
-        naptan_id="940GZZLUPCO",
+    pimlico = await a_station(
+        db,
+        "940GZZLUPCO",
         name="Pimlico Underground Station",
-        location="SRID=4326;POINT(-0.133761 51.489097)",
+        lon=-0.133761,
+        lat=51.489097,
     )
-    db.add_all([oxford, pimlico])
-    await db.flush()
 
     db.add_all(
         [

@@ -34,13 +34,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
     Interchange,
-    Line,
     Segment,
     Station,
     StationComplex,
     StationLine,
-    TransportMode,
 )
+from tests.helpers import a_line, a_station
 
 # Declared here rather than imported from conftest: tests/ is not a package,
 # so `from .conftest import ...` would not resolve, and pytest's own import of
@@ -98,22 +97,6 @@ async def test_a_geography_point_round_trips(db: AsyncSession) -> None:
 def point(lon: float, lat: float) -> str:
     """A WGS84 point in the form the geography column accepts."""
     return f"SRID=4326;POINT({lon} {lat})"
-
-
-async def a_line(db: AsyncSession, code: str = "victoria") -> Line:
-    line = Line(code=code, name=code.title(), mode=TransportMode.TUBE, colour="#0098D4")
-    db.add(line)
-    await db.flush()
-    return line
-
-
-async def a_station(
-    db: AsyncSession, naptan_id: str, name: str = "Somewhere"
-) -> Station:
-    station = Station(naptan_id=naptan_id, name=name, location=point(-0.1, 51.5))
-    db.add(station)
-    await db.flush()
-    return station
 
 
 # --- lines -------------------------------------------------------------------

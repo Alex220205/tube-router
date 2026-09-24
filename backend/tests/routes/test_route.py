@@ -28,8 +28,9 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Interchange, Line, Segment, Station, StationLine, TransportMode
+from app.models import Interchange, StationLine
 from app.services import status_poller
+from tests.helpers import a_line, a_station, both_ways
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("TEST_DATABASE_URL"),
@@ -48,75 +49,22 @@ pytestmark = pytest.mark.skipif(
 #
 # Worked out on paper, like every expected value in the engine suite.
 async def seed_two_line_network(db: AsyncSession) -> None:
-    """A network where the objectives genuinely disagree.
+    """A network where the objectives genuinely disagree."""
+    red = await a_line(db, "red")
+    blue = await a_line(db, "blue")
+    green = await a_line(db, "green")
 
-        A --30-- B --30-- C     on red then blue, changing at B costs 20
-        A ------300------ C     on green, one hop, no change
+    a = await a_station(db, "A", name="A Underground Station", lon=-0.1)
+    b = await a_station(db, "B", name="B Underground Station", lon=-0.2)
+    c = await a_station(db, "C", name="C Underground Station", lon=-0.3)
+    orphan = await a_station(db, "ORPHAN", name="ORPHAN Underground Station", lon=-0.4)
 
-        step-free: A and C on green only. B has nothing accessible.
-
-    Fastest:        30 + 20 + 30 = 80 seconds, one change.
-    Fewest changes: 300 seconds, none.
-    Step-free:      300 seconds on green - the only accessible way.
-
-    Worked out on paper, like every expected value in the engine suite.
-    """
-    red, blue, green = (
-        Line(code=code, name=code.title(), mode=TransportMode.TUBE, colour="#000000")
-        for code in ("red", "blue", "green")
-    )
-    db.add_all([red, blue, green])
-    await db.flush()
-
-    a, b, c, orphan = (
-        Station(
-            naptan_id=naptan,
-            name=f"{naptan} Underground Station",
-            location=f"SRID=4326;POINT({lon} 51.5)",
-        )
-        for naptan, lon in (("A", -0.1), ("B", -0.2), ("C", -0.3), ("ORPHAN", -0.4))
-    )
-    db.add_all([a, b, c, orphan])
-    await db.flush()
+    await both_ways(db, red, a, b, 30)
+    await both_ways(db, blue, b, c, 30)
+    await both_ways(db, green, a, c, 300)
 
     db.add_all(
         [
-            Segment(
-                line_id=red.id,
-                origin_station_id=a.id,
-                destination_station_id=b.id,
-                seconds=30,
-            ),
-            Segment(
-                line_id=red.id,
-                origin_station_id=b.id,
-                destination_station_id=a.id,
-                seconds=30,
-            ),
-            Segment(
-                line_id=blue.id,
-                origin_station_id=b.id,
-                destination_station_id=c.id,
-                seconds=30,
-            ),
-            Segment(
-                line_id=blue.id,
-                origin_station_id=c.id,
-                destination_station_id=b.id,
-                seconds=30,
-            ),
-            Segment(
-                line_id=green.id,
-                origin_station_id=a.id,
-                destination_station_id=c.id,
-                seconds=300,
-            ),
-            Segment(
-                line_id=green.id,
-                origin_station_id=c.id,
-                destination_station_id=a.id,
-                seconds=300,
-            ),
             Interchange(
                 station_id=b.id, from_line_id=red.id, to_line_id=blue.id, seconds=20
             ),
