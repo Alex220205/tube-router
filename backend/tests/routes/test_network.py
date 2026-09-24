@@ -74,6 +74,7 @@ async def seed_tiny_network(db: AsyncSession) -> None:
 async def test_lines_carry_the_colour_the_map_draws_with(
     api: AsyncClient, db: AsyncSession
 ) -> None:
+    """Lines carry the colour the map draws with."""
     # colour is NOT NULL and has no TfL API source - it comes from a
     # hardcoded map in the seed. If that ever breaks, the map renders in
     # whatever the default is and looks merely wrong rather than broken.
@@ -89,6 +90,7 @@ async def test_lines_carry_the_colour_the_map_draws_with(
 async def test_every_segment_names_a_station_the_payload_contains(
     api: AsyncClient, db: AsyncSession
 ) -> None:
+    """Every segment names a station the payload contains."""
     # The failure this guards is a line drawn to nowhere. Segments carry ids
     # rather than nested stations, so the client joins them - and a dangling
     # id produces a map that is silently missing track.
@@ -106,6 +108,7 @@ async def test_every_segment_names_a_station_the_payload_contains(
 async def test_the_network_keeps_both_directions_with_their_own_times(
     api: AsyncClient, db: AsyncSession
 ) -> None:
+    """The network keeps both directions with their own times."""
     # Segments are directional and the two directions genuinely differ -
     # Waterloo & City is 180 seconds one way and 240 the other in the real
     # data. Collapsing them would average away real asymmetry.

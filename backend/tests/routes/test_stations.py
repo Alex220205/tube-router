@@ -68,6 +68,7 @@ async def seed_two_stations(db: AsyncSession) -> dict[str, int]:
 async def test_search_matches_a_substring_not_just_a_prefix(
     api: AsyncClient, db: AsyncSession
 ) -> None:
+    """Search matches a substring, not just a prefix."""
     # Names are stored verbatim, suffix included, so "Oxford Circus
     # Underground Station" has to be findable by typing a word from the
     # middle. A prefix match would find nothing for "circus".
@@ -82,6 +83,7 @@ async def test_search_matches_a_substring_not_just_a_prefix(
 async def test_search_returns_coordinates_the_right_way_round(
     api: AsyncClient, db: AsyncSession
 ) -> None:
+    """Search returns coordinates the right way round."""
     # ST_X is longitude and ST_Y is latitude, which reads backwards to anyone
     # thinking in "lat, lon". Swapping them puts London in the Indian Ocean
     # and raises nothing at all.
@@ -96,6 +98,7 @@ async def test_search_returns_coordinates_the_right_way_round(
 async def test_a_search_matching_nothing_is_an_empty_list_not_a_404(
     api: AsyncClient, db: AsyncSession
 ) -> None:
+    """A search matching nothing is an empty list, not a 404."""
     # "No stations called zzz" is a successful answer to a reasonable
     # question. A 404 would make the frontend render an error for someone
     # halfway through typing.
@@ -110,6 +113,7 @@ async def test_a_search_matching_nothing_is_an_empty_list_not_a_404(
 async def test_a_blank_query_returns_everything(
     api: AsyncClient, db: AsyncSession
 ) -> None:
+    """A blank query returns everything."""
     # The search box's first render is empty. Erroring there would be noise.
     await seed_two_stations(db)
 
@@ -119,6 +123,7 @@ async def test_a_blank_query_returns_everything(
 async def test_a_station_carries_its_lines_and_accessibility(
     api: AsyncClient, db: AsyncSession
 ) -> None:
+    """A station carries its lines and accessibility."""
     ids = await seed_two_stations(db)
 
     station = (await api.get(f"/stations/{ids['oxford']}")).json()
@@ -131,6 +136,7 @@ async def test_a_station_carries_its_lines_and_accessibility(
 
 
 async def test_an_unknown_station_is_a_404(api: AsyncClient, db: AsyncSession) -> None:
+    """An unknown station is a 404."""
     await seed_two_stations(db)
 
     response = await api.get("/stations/999999")
@@ -143,6 +149,7 @@ async def test_an_unknown_station_is_a_404(api: AsyncClient, db: AsyncSession) -
 async def test_a_non_positive_id_is_a_400_not_a_404(
     api: AsyncClient, db: AsyncSession, station_id: int
 ) -> None:
+    """A non-positive id is a 400, not a 404."""
     # The request is malformed, not pointing at something absent, and a 404
     # would misdescribe it. It also fails before touching the database,
     # because no query can match a negative id.

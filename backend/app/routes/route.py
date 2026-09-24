@@ -4,9 +4,10 @@ POST /route - the endpoint the whole project exists to serve.
 WHY THIS EXISTS
     Five phases built the parts. This is where a browser can finally ask for
     a journey and get one. It is also the second half of the engine boundary:
-    a Pydantic request becomes a RouteQuery, find_route answers, and engine
-    dataclasses become schemas on the way out. Nothing of FastAPI reaches the
-    engine and nothing of the engine reaches the wire.
+    the Pydantic request is validated here, services/journeys.py turns it into
+    a RouteQuery around whatever is shut, and the engine's answer becomes
+    schemas here on the way out. Nothing of FastAPI reaches the engine and
+    nothing of the engine reaches the wire.
 
 WHAT THE 2021 VERSION DID
     Where:  database[works].py lines 860-880, GUI.Find_shortest_path
@@ -37,8 +38,8 @@ from sqlalchemy.exc import OperationalError
 from app.core.database import SessionDep
 from app.routes import COMMON_RESPONSES
 from app.schemas.route import LegPublic, RouteRequest, RouteResponse, StationStop
-from app.services import graph_loader, status_poller
-from tube_engine import Network, Objective, Route, RouteQuery, find_route
+from app.services import graph_loader, journeys
+from tube_engine import Network, Objective, Route
 
 router = APIRouter(prefix="/route", tags=["route"])
 
@@ -48,15 +49,33 @@ router = APIRouter(prefix="/route", tags=["route"])
 OBJECTIVES = {objective.value: objective for objective in Objective}
 
 
+def _objective(name: str) -> Objective:
+    """The objective a request names, or a 400 listing the real ones."""
+    objective = OBJECTIVES.get(name)
+    if objective is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unknown objective {name!r}. "
+                f"Expected one of {', '.join(sorted(OBJECTIVES))}."
+            ),
+        )
+    return objective
+
+
+def _require_station(network: Network, naptan_id: str) -> None:
+    """A 404 naming the station, if the network does not have it."""
+    if naptan_id not in network:
+        raise HTTPException(status_code=404, detail=f"Unknown station {naptan_id!r}")
+
+
+# The engine speaks in NaPTAN ids because it must not care what anything is
+# called. A client needs "Green Park", and this is the only place that
+# knows both.
 def _to_response(
     network: Network, result: Route, avoided: list[str], partial: list[str]
 ) -> RouteResponse:
-    """Turn an engine Route into the wire format, resolving names as it goes.
-
-    The engine speaks in NaPTAN ids because it must not care what anything is
-    called. A client needs "Green Park", and this is the only place that
-    knows both.
-    """
+    """Turn an engine Route into the wire format, resolving names as it goes."""
     return RouteResponse(
         found=True,
         avoided_for_disruption=avoided,
@@ -78,89 +97,44 @@ def _to_response(
     )
 
 
+# The session is used only when the network has to be built. After that
+# the process holds the network and the database is not asked again.
+#
+# A RouteResponse. `found` is false with a reason when the two stations
+# are real but not connected - a 200, because that is a correct answer
+# rather than a failed request.
+#
+# HTTPException: 400 for an objective that does not exist, 404 for a
+#     station that does not exist, 503 if the network cannot be built.
 @router.post(
     "",
     response_model=RouteResponse,
     responses={**COMMON_RESPONSES, 200: {"description": "OK"}},
 )
 async def plan_route(request: RouteRequest, session: SessionDep) -> RouteResponse:
-    """Plan a journey between two stations.
-
-    Args:
-        request: Origin, destination, objective and any lines to avoid.
-        session: Injected per request. Used only if the network needs building.
-
-    Returns:
-        A RouteResponse. `found` is false with a reason when the two stations
-        are real but not connected - a 200, because that is a correct answer
-        rather than a failed request.
-
-    Raises:
-        HTTPException: 400 for an objective that does not exist, 404 for a
-            station that does not exist, 503 if the network cannot be built.
-    """
+    """Plan a journey between two stations."""
     try:
-        objective = OBJECTIVES.get(request.objective)
-        if objective is None:
-            # Guard before touching the database: no network is needed to
-            # know that "quickest" is not an objective.
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Unknown objective {request.objective!r}. "
-                    f"Expected one of {', '.join(sorted(OBJECTIVES))}."
-                ),
-            )
+        # Guard before touching the database: no network is needed to know
+        # that "quickest" is not an objective.
+        objective = _objective(request.objective)
 
         # Built once per process, not per request. The direct fix for
         # Create_graph rebuilding the whole graph from SQL inside the search.
         network = await graph_loader.get_network(session)
 
-        # Named separately so the message can say which end was wrong. "One of
-        # your stations does not exist" is not a useful thing to tell someone.
-        if request.origin not in network:
-            raise HTTPException(
-                status_code=404, detail=f"Unknown station {request.origin!r}"
-            )
-        if request.destination not in network:
-            raise HTTPException(
-                status_code=404, detail=f"Unknown station {request.destination!r}"
-            )
+        # Checked separately so the message can say which end was wrong. "One
+        # of your stations does not exist" is not a useful thing to tell
+        # someone.
+        _require_station(network, request.origin)
+        _require_station(network, request.destination)
 
-        # Lines with no trains on them, merged into whatever the caller asked
-        # to avoid. Only closures and suspensions - a delay is reported on
-        # /status and never silently rewrites a journey, because Severe Delays
-        # often clears within the hour and rerouting someone around a line
-        # that is still moving gives them a worse trip for nothing.
-        disrupted = await status_poller.not_running_lines()
-
-        # A line shut between two places is not a line that is shut. TfL says
-        # which stretch in affectedStops, so those rides come out of the
-        # network and the rest of the line keeps running - the District is
-        # closed west of Earl's Court most weekends and its eastern half is
-        # untouched.
-        sections = await status_poller.closed_sections()
-        if sections:
-            network = network.without_closed_sections(sections)
-
-        # Reported separately, because they mean different things to a
-        # traveller. A wholly shut line is not available at all; a partly
-        # closed one is still running and this route may use it, which is
-        # exactly what Heathrow Terminal 5 to Epping does on the Piccadilly
-        # while the middle of that line is shut.
-        avoided = sorted(disrupted)
-        partial = sorted(sections)
-
-        result = find_route(
+        result, avoided, partial = await journeys.plan(
             network,
-            RouteQuery(
-                origin=request.origin,
-                destination=request.destination,
-                objective=objective,
-                avoid_lines=frozenset(request.avoid_lines) | disrupted,
-            ),
+            request.origin,
+            request.destination,
+            objective,
+            frozenset(request.avoid_lines),
         )
-
         if isinstance(result, Route):
             return _to_response(network, result, avoided, partial)
 

@@ -34,6 +34,7 @@ FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "tfl" / "line_statu
 
 
 def real_payload() -> list[dict]:
+    """The recorded TfL line status response."""
     return json.loads(FIXTURE.read_text(encoding="utf-8"))
 
 
@@ -52,6 +53,7 @@ def line(code: str, severity: int, description: str = "x", reason: str | None = 
 
 
 def test_the_real_payload_reads_as_eleven_lines() -> None:
+    """The real payload reads as eleven lines."""
     # Captured from api.tfl.gov.uk on 2026-09-15, with three lines genuinely
     # degraded at the time. Better evidence than anything hand-written.
     statuses = statuses_from_payload(real_payload())
@@ -65,14 +67,12 @@ def test_the_real_payload_reads_as_eleven_lines() -> None:
     assert "delays" in (by_code["bakerloo"].reason or "").lower()
 
 
+# Severe Delays is the severity it is most tempting to avoid, and avoiding
+# it means rerouting every Piccadilly journey in London over a condition
+# that is often gone within the hour. The captured payload has two lines in
+# exactly that state, and neither may be excluded.
 def test_delays_are_reported_but_do_not_stop_a_line_running() -> None:
-    """The counterweight, and the more important direction.
-
-    Severe Delays is the severity it is most tempting to avoid, and avoiding
-    it means rerouting every Piccadilly journey in London over a condition
-    that is often gone within the hour. The captured payload has two lines in
-    exactly that state, and neither may be excluded.
-    """
+    """The counterweight, and the more important direction."""
     statuses = statuses_from_payload(real_payload())
 
     assert not_running(statuses) == frozenset()
@@ -80,6 +80,7 @@ def test_delays_are_reported_but_do_not_stop_a_line_running() -> None:
 
 
 def test_closures_and_suspensions_stop_a_line_running() -> None:
+    """Closures and suspensions stop a line running."""
     # The positive case the real capture cannot show, because nothing was
     # suspended on the day it was taken.
     payload = [
@@ -96,6 +97,7 @@ def test_closures_and_suspensions_stop_a_line_running() -> None:
 
 
 def test_an_unknown_severity_is_treated_as_running() -> None:
+    """An unknown severity is treated as running."""
     # TfL can add a code at any time. The optimistic reading being wrong shows
     # a user a delayed line; the pessimistic reading being wrong deletes a
     # working line from the network, which is the failure that strands someone.
@@ -106,6 +108,7 @@ def test_an_unknown_severity_is_treated_as_running() -> None:
 
 
 def test_the_worst_of_several_statuses_wins() -> None:
+    """The worst of several statuses wins."""
     # A line can report part of itself suspended while the rest runs normally.
     # Taking the cheerful half would send someone to a closed platform.
     payload = [
@@ -125,6 +128,7 @@ def test_the_worst_of_several_statuses_wins() -> None:
 
 
 def test_a_malformed_payload_yields_what_it_can_rather_than_raising() -> None:
+    """A malformed payload yields what it can rather than raising."""
     # This runs in a background poller. One bad line must not cost the other
     # ten, and a shape TfL never sends must not take the task down - it would
     # stop status updating entirely, with no symptom on the page.
@@ -144,6 +148,7 @@ def test_a_malformed_payload_yields_what_it_can_rather_than_raising() -> None:
 
 
 def test_lines_come_back_in_a_stable_order() -> None:
+    """Lines come back in a stable order."""
     # The poller publishes only when the picture changes, and "changed" is an
     # equality check against the last list. Unstable ordering would wake every
     # connected client sixty times an hour to say nothing happened.
@@ -154,6 +159,7 @@ def test_lines_come_back_in_a_stable_order() -> None:
 
 
 def test_the_status_carries_the_number_not_just_a_verdict() -> None:
+    """The status carries the number, not just a verdict."""
     # A client may want to colour Minor Delays differently from Severe Delays.
     # Collapsing severity to a boolean here would throw that away for good.
     status = statuses_from_payload([line("central", 6, "Severe Delays")])[0]

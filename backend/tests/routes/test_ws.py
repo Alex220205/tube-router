@@ -69,16 +69,15 @@ CHANGED = {
 }
 
 
+# TestClient runs the lifespan, and the real one creates a background task
+# that talks to api.tfl.gov.uk. A test suite must not depend on someone
+# else's server - the rule test_tfl.py states outright.
 @pytest.fixture(autouse=True)
 def _no_real_poller(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep the application's lifespan from starting a poller against TfL.
-
-    TestClient runs the lifespan, and the real one creates a background task
-    that talks to api.tfl.gov.uk. A test suite must not depend on someone
-    else's server - the rule test_tfl.py states outright.
-    """
+    """Keep the application's lifespan from starting a poller against TfL."""
 
     async def noop(stop: object = None) -> None:
+        """Stand in for the poller and do nothing."""
         return
 
     monkeypatch.setattr(status_poller, "run", noop)
@@ -89,7 +88,10 @@ def fake_subscription(*messages: Any) -> object:
 
     @asynccontextmanager
     async def subscription(channel: str) -> AsyncIterator[AsyncIterator[Any]]:
+        """Yield an iterator over the prepared messages, as Redis would."""
+
         async def messages_iter() -> AsyncIterator[Any]:
+            """Yield each prepared message in turn."""
             for message in messages:
                 yield message
 
@@ -101,9 +103,12 @@ def fake_subscription(*messages: Any) -> object:
 def test_a_new_client_is_sent_the_current_picture_immediately(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A new client is sent the current picture immediately."""
+
     # Before any subscription traffic. A client connecting during a quiet
     # spell would otherwise show nothing until the next change.
     async def current() -> dict:
+        """Return the sample status."""
         return SAMPLE
 
     monkeypatch.setattr(status_poller, "current", current)
@@ -116,7 +121,10 @@ def test_a_new_client_is_sent_the_current_picture_immediately(
 def test_a_published_change_reaches_the_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A published change reaches the client."""
+
     async def current() -> dict:
+        """Return the sample status."""
         return SAMPLE
 
     monkeypatch.setattr(status_poller, "current", current)
@@ -128,10 +136,13 @@ def test_a_published_change_reaches_the_client(
 
 
 def test_an_unknown_status_still_connects(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unknown status still connects."""
+
     # The first minute after a restart. The socket must open and say "I do not
     # know yet" rather than refusing the connection - a page that cannot
     # connect looks broken, while an empty status is honest.
     async def nothing_known() -> dict:
+        """Return a status that knows nothing yet."""
         return {"as_of": None, "lines": []}
 
     monkeypatch.setattr(status_poller, "current", nothing_known)
@@ -141,20 +152,20 @@ def test_an_unknown_status_still_connects(monkeypatch: pytest.MonkeyPatch) -> No
         assert ws.receive_json() == {"as_of": None, "lines": []}
 
 
+# core/cache.py absorbs Redis failures everywhere else; this is the one
+# place that holds a connection open across one, so it gets its own test.
 def test_an_unreachable_redis_does_not_break_the_connection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The client keeps what it was given rather than seeing an error.
-
-    core/cache.py absorbs Redis failures everywhere else; this is the one
-    place that holds a connection open across one, so it gets its own test.
-    """
+    """The client keeps what it was given rather than seeing an error."""
 
     async def current() -> dict:
+        """Return the sample status."""
         return SAMPLE
 
     @asynccontextmanager
     async def exploding(channel: str) -> AsyncIterator[AsyncIterator[Any]]:
+        """Fail to subscribe, as an unreachable Redis would."""
         raise OSError("redis is not there")
         yield  # pragma: no cover - unreachable, satisfies the generator shape
 
@@ -167,6 +178,16 @@ def test_an_unreachable_redis_does_not_break_the_connection(
         assert ws.receive_json() == SAMPLE
 
 
+# The only test that proves the pub/sub wiring rather than the code.
+#
+# Two sockets, one publish, both receive it. That is the multi-worker claim
+# Redis is there to support: the poller runs in one process and a browser
+# may be connected to another, so an in-process broadcast would pass every
+# other test in this file and fail in production.
+#
+# Skips without TEST_REDIS_URL, the same bargain the database tests make -
+# and CI sets it, because a silently skipped test that never runs anywhere
+# is worse than no test.
 @pytest.mark.skipif(
     not os.environ.get("TEST_REDIS_URL"),
     reason="needs a real Redis; set TEST_REDIS_URL",
@@ -174,17 +195,7 @@ def test_an_unreachable_redis_does_not_break_the_connection(
 def test_two_clients_both_receive_one_publish(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """**The only test that proves the pub/sub wiring rather than the code.**
-
-    Two sockets, one publish, both receive it. That is the multi-worker claim
-    Redis is there to support: the poller runs in one process and a browser
-    may be connected to another, so an in-process broadcast would pass every
-    other test in this file and fail in production.
-
-    Skips without TEST_REDIS_URL, the same bargain the database tests make -
-    and CI sets it, because a silently skipped test that never runs anywhere
-    is worse than no test.
-    """
+    """Two sockets each receive a single publish through a real Redis."""
     # get_settings is cached, so setting the variable is not enough on its own
     # - the dead port conftest installs for the whole suite would still be
     # what get_client reads. Both caches have to go.
@@ -193,6 +204,7 @@ def test_two_clients_both_receive_one_publish(
     cache._client = None
 
     async def current() -> dict:
+        """Return the sample status."""
         return SAMPLE
 
     monkeypatch.setattr(status_poller, "current", current)

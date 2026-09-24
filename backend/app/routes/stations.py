@@ -31,6 +31,16 @@ from app.services import stations as station_service
 router = APIRouter(prefix="/stations", tags=["stations"])
 
 
+# session: Injected per request.
+# q: What the user typed. Blank or absent returns everything up to the
+#     limit, because the search box starts empty and a 400 there would
+#     be noise.
+# limit: Capped by the query parameter itself, so an absurd value is a
+#     422 from FastAPI before any code runs.
+#
+# Matching stations, ordered by name. An empty list when nothing
+# matches - not a 404. "No stations called zzz" is a successful answer
+# to a reasonable question.
 @router.get(
     "",
     response_model=list[StationPublic],
@@ -44,21 +54,7 @@ async def search_stations(
     ),
     limit: int = Query(default=50, ge=1, le=200, description="Maximum results."),
 ) -> list[StationPublic]:
-    """Search stations by name.
-
-    Args:
-        session: Injected per request.
-        q: What the user typed. Blank or absent returns everything up to the
-            limit, because the search box starts empty and a 400 there would
-            be noise.
-        limit: Capped by the query parameter itself, so an absurd value is a
-            422 from FastAPI before any code runs.
-
-    Returns:
-        Matching stations, ordered by name. An empty list when nothing
-        matches - not a 404. "No stations called zzz" is a successful answer
-        to a reasonable question.
-    """
+    """Search stations by name."""
     try:
         rows = await station_service.search_stations(session, query=q, limit=limit)
         return [StationPublic(**row) for row in rows]
@@ -74,18 +70,7 @@ async def search_stations(
     responses={**COMMON_RESPONSES, 200: {"description": "OK"}},
 )
 async def get_station(station_id: int, session: SessionDep) -> StationRead:
-    """Fetch one station, with the lines calling at it.
-
-    Args:
-        station_id: Surrogate identifier.
-        session: Injected per request.
-
-    Returns:
-        The station, its lines and its interchange complex.
-
-    Raises:
-        HTTPException: 400 if the id is not positive, 404 if no such station.
-    """
+    """Fetch one station, with the lines calling at it."""
     try:
         # Guard before touching the database. A negative id cannot match
         # anything, so asking is wasted work and a 404 would misdescribe it -

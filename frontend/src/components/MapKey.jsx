@@ -55,6 +55,7 @@ import { BAND_ORDER, BANDS } from '../lib/severity'
 export const INK = '#1c1c1b'
 export const STEP_FREE = '#0019a8'
 
+/** The collapsible legend explaining every mark the map draws. */
 export default function MapKey({ lines }) {
   const [open, setOpen] = useState(false)
 

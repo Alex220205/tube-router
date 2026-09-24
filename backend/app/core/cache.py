@@ -45,13 +45,11 @@ READ_TIMEOUT_SECONDS = 0.5
 _client: redis.Redis | None = None
 
 
+# Built lazily rather than at import so that importing `app` does not
+# require Redis to exist - which is what lets the test suite and Alembic
+# run without it.
 def get_client() -> redis.Redis:
-    """The shared Redis client, created once per process.
-
-    Built lazily rather than at import so that importing `app` does not
-    require Redis to exist - which is what lets the test suite and Alembic
-    run without it.
-    """
+    """The shared Redis client, created once per process."""
     global _client
     if _client is None:
         _client = redis.from_url(
@@ -70,17 +68,11 @@ def get_client() -> redis.Redis:
     return _client
 
 
+# The decoded value, or None on a miss, on unreadable content, or if
+# Redis cannot be reached at all. The caller cannot tell these apart
+# and should not need to - every one of them means "go to the source".
 async def read_json(key: str) -> Any | None:
-    """Read a JSON value.
-
-    Args:
-        key: Cache key.
-
-    Returns:
-        The decoded value, or None on a miss, on unreadable content, or if
-        Redis cannot be reached at all. The caller cannot tell these apart
-        and should not need to - every one of them means "go to the source".
-    """
+    """Read a JSON value."""
     try:
         raw = await get_client().get(key)
     except Exception:
@@ -95,16 +87,13 @@ async def read_json(key: str) -> Any | None:
         return None
 
 
+# key: Cache key.
+# value: Anything json.dumps can handle.
+# ttl_seconds: Expiry. Always set - an entry that never expires is one
+#     that has to be invalidated correctly forever, and getting that
+#     wrong serves stale data indefinitely.
 async def write_json(key: str, value: Any, ttl_seconds: int) -> None:
-    """Store a JSON value, best effort.
-
-    Args:
-        key: Cache key.
-        value: Anything json.dumps can handle.
-        ttl_seconds: Expiry. Always set - an entry that never expires is one
-            that has to be invalidated correctly forever, and getting that
-            wrong serves stale data indefinitely.
-    """
+    """Store a JSON value, best effort."""
     try:
         await get_client().set(key, json.dumps(value), ex=ttl_seconds)
     except (TypeError, ValueError):
@@ -140,15 +129,12 @@ async def close() -> None:
 GENERATION_KEY = "tube-router:generation"
 
 
+# The integer, 0 if the key has never been set, or None if Redis could
+# not be reached. None and 0 are deliberately different: "no answer" must
+# not be mistaken for "generation zero", or an unreachable Redis would
+# look like a signal to rebuild on every single request.
 async def read_generation() -> int | None:
-    """The current graph generation.
-
-    Returns:
-        The integer, 0 if the key has never been set, or None if Redis could
-        not be reached. None and 0 are deliberately different: "no answer" must
-        not be mistaken for "generation zero", or an unreachable Redis would
-        look like a signal to rebuild on every single request.
-    """
+    """The current graph generation."""
     try:
         raw = await get_client().get(GENERATION_KEY)
     except Exception:
@@ -163,15 +149,10 @@ async def read_generation() -> int | None:
         return None
 
 
+# INCR rather than read-modify-write, so two seeds running at once cannot
+# produce the same number and leave one of them invisible.
 async def bump_generation() -> int | None:
-    """Mark every built graph stale. Called by the seed after it commits.
-
-    Returns:
-        The new generation, or None if Redis could not be reached.
-
-    INCR rather than read-modify-write, so two seeds running at once cannot
-    produce the same number and leave one of them invisible.
-    """
+    """Mark every built graph stale. Called by the seed after it commits."""
     try:
         return int(await get_client().incr(GENERATION_KEY))
     except Exception:
@@ -187,17 +168,11 @@ async def bump_generation() -> int | None:
 # the kind of thing that is only discovered in production.
 
 
+# A failure here means connected clients keep their last view until the next
+# push rather than the service breaking, which is the same trade every other
+# function in this module makes.
 async def publish(channel: str, value: Any) -> None:
-    """Announce a change to every subscriber, best effort.
-
-    Args:
-        channel: Channel name.
-        value: Anything json.dumps can handle.
-
-    A failure here means connected clients keep their last view until the next
-    push rather than the service breaking, which is the same trade every other
-    function in this module makes.
-    """
+    """Announce a change to every subscriber, best effort."""
     try:
         await get_client().publish(channel, json.dumps(value))
     except (TypeError, ValueError):
@@ -206,22 +181,16 @@ async def publish(channel: str, value: Any) -> None:
         return
 
 
+# The pub/sub object gets its own connection, so closing it is not optional:
+# a WebSocket that disconnects without unsubscribing leaks a connection per
+# client, and the leak only shows up under the load it was built for.
+#
+# An async iterator of decoded JSON payloads. Messages that are not JSON
+# are skipped rather than ending the subscription - one bad publish from
+# somewhere else must not disconnect every listener.
 @asynccontextmanager
 async def subscription(channel: str) -> AsyncIterator[AsyncIterator[Any]]:
-    """Subscribe to a channel and yield decoded messages until the caller stops.
-
-    Args:
-        channel: Channel name.
-
-    Yields:
-        An async iterator of decoded JSON payloads. Messages that are not JSON
-        are skipped rather than ending the subscription - one bad publish from
-        somewhere else must not disconnect every listener.
-
-    The pub/sub object gets its own connection, so closing it is not optional:
-    a WebSocket that disconnects without unsubscribing leaks a connection per
-    client, and the leak only shows up under the load it was built for.
-    """
+    """Subscribe to a channel and yield decoded messages until the caller stops."""
     client = get_client()
     pubsub = client.pubsub()
     await pubsub.subscribe(channel)

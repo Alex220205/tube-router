@@ -34,21 +34,15 @@ from app.services import stations as station_service
 router = APIRouter(prefix="/network", tags=["network"])
 
 
+# Stations with coordinates, directional segments carrying station ids
+# rather than nested stations, and the lines with their colours.
 @router.get(
     "",
     response_model=NetworkResponse,
     responses={**COMMON_RESPONSES, 200: {"description": "OK"}},
 )
 async def get_network(session: SessionDep) -> NetworkResponse:
-    """Every station, segment and line in one payload.
-
-    Args:
-        session: Injected per request.
-
-    Returns:
-        Stations with coordinates, directional segments carrying station ids
-        rather than nested stations, and the lines with their colours.
-    """
+    """Every station, segment and line in one payload."""
     try:
         return NetworkResponse(**await station_service.get_network(session))
     except OperationalError as exc:

@@ -59,28 +59,25 @@ StationId = str
 LineId = str
 
 
+# Frozen, like everything else here. The 2021 search mutated the structure
+# it was searching - line 532 aliased the graph and line 557 popped from it,
+# so one search emptied it - and immutability is what makes that class of
+# bug unwritable rather than merely avoided.
+#
+# There is deliberately no step_free flag. Accessibility is a property of a
+# platform - Green Park is step-free on the Victoria line and not on the
+# Piccadilly - so a station-level answer would have to pick one of them and
+# be wrong about the other. Network holds it at the right grain instead.
+#
+# id: Stable identifier. Compared, never parsed.
+# name: For display. The engine never matches on it, which is why the
+#     2021 habit of deduplicating stations by name string cannot recur
+#     here.
+# lat: WGS84 latitude.
+# lon: WGS84 longitude.
 @dataclass(frozen=True)
 class Station:
-    """A place you can start from, finish at, or change lines at.
-
-    Frozen, like everything else here. The 2021 search mutated the structure
-    it was searching - line 532 aliased the graph and line 557 popped from it,
-    so one search emptied it - and immutability is what makes that class of
-    bug unwritable rather than merely avoided.
-
-    Attributes:
-        id: Stable identifier. Compared, never parsed.
-        name: For display. The engine never matches on it, which is why the
-            2021 habit of deduplicating stations by name string cannot recur
-            here.
-        lat: WGS84 latitude.
-        lon: WGS84 longitude.
-
-    There is deliberately no step_free flag. Accessibility is a property of a
-    platform - Green Park is step-free on the Victoria line and not on the
-    Piccadilly - so a station-level answer would have to pick one of them and
-    be wrong about the other. Network holds it at the right grain instead.
-    """
+    """A place you can start from, finish at, or change lines at."""
 
     id: StationId
     name: str
@@ -88,29 +85,26 @@ class Station:
     lon: float
 
 
+# Directional. The network genuinely is not symmetric: Waterloo & City is
+# 180 seconds from Bank to Waterloo and 240 seconds coming back, and the
+# Piccadilly runs one way round the Heathrow terminal loop. An undirected
+# edge would average that away or pick one arbitrarily.
+#
+# No step_free flag here either, and for a sharper reason than on Station:
+# riding is always step-free once you are aboard. You need no accessible
+# route at a station you stay on the train through, so a per-ride flag asks
+# a question with no answer. Treating one as "both ends accessible" left
+# 123 of 754 real rides and fragmented the accessible network into pieces.
+#
+# origin: Station departed from.
+# destination: Station arrived at.
+# line: Which line this ride is on. The field 2021 had and discarded.
+# seconds: Journey time. Always positive - a zero-weight edge tells a
+#     search the journey is free, which is worse than a missing edge
+#     because it produces a confident wrong answer.
 @dataclass(frozen=True)
 class Edge:
-    """One ride between adjacent stations on one line.
-
-    Directional. The network genuinely is not symmetric: Waterloo & City is
-    180 seconds from Bank to Waterloo and 240 seconds coming back, and the
-    Piccadilly runs one way round the Heathrow terminal loop. An undirected
-    edge would average that away or pick one arbitrarily.
-
-    Attributes:
-        origin: Station departed from.
-        destination: Station arrived at.
-        line: Which line this ride is on. The field 2021 had and discarded.
-        seconds: Journey time. Always positive - a zero-weight edge tells a
-            search the journey is free, which is worse than a missing edge
-            because it produces a confident wrong answer.
-
-    No step_free flag here either, and for a sharper reason than on Station:
-    riding is always step-free once you are aboard. You need no accessible
-    route at a station you stay on the train through, so a per-ride flag asks
-    a question with no answer. Treating one as "both ends accessible" left
-    123 of 754 real rides and fragmented the accessible network into pieces.
-    """
+    """One ride between adjacent stations on one line."""
 
     origin: StationId
     destination: StationId
@@ -118,23 +112,20 @@ class Edge:
     seconds: int
 
 
+# Directional for the same reason edges are: the walk from the Northern to
+# the Central at Bank is not the walk back.
+#
+# station: Where the change happens.
+# from_line: Line being left.
+# to_line: Line being joined.
+# seconds: Walking time between platforms. Positive - a free
+#     interchange makes "fastest" and "fewest changes" collapse into the
+#     same answer.
+# step_free: Whether this particular change can be made step-free, which
+#     is not the same as either platform being step-free on its own.
 @dataclass(frozen=True)
 class Interchange:
-    """The cost of changing from one line to another at a station.
-
-    Directional for the same reason edges are: the walk from the Northern to
-    the Central at Bank is not the walk back.
-
-    Attributes:
-        station: Where the change happens.
-        from_line: Line being left.
-        to_line: Line being joined.
-        seconds: Walking time between platforms. Positive - a free
-            interchange makes "fastest" and "fewest changes" collapse into the
-            same answer.
-        step_free: Whether this particular change can be made step-free, which
-            is not the same as either platform being step-free on its own.
-    """
+    """The cost of changing from one line to another at a station."""
 
     station: StationId
     from_line: LineId

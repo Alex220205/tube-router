@@ -74,6 +74,7 @@ async def connect(
 
 
 async def result_for(db: AsyncSession, name: str) -> seed_checks.CheckResult:
+    """Run every check and return the one with this name."""
     results = await seed_checks.run_all(db)
     return next(result for result in results if result.name == name)
 
@@ -82,6 +83,7 @@ async def result_for(db: AsyncSession, name: str) -> seed_checks.CheckResult:
 
 
 async def test_a_split_network_fails_the_connectivity_check(db: AsyncSession) -> None:
+    """A split network fails the connectivity check."""
     # Two pairs of stations with no track between them: the 2021 situation in
     # miniature, where the Epping and West Ruislip branches sat disconnected
     # from the rest of the Central line.
@@ -119,6 +121,7 @@ async def test_a_joined_network_passes(db: AsyncSession) -> None:
 async def test_a_station_reachable_only_across_lines_still_counts(
     db: AsyncSession,
 ) -> None:
+    """A station reachable only across lines still counts."""
     # An interchange station holds the network together even though the two
     # lines never share a segment. Treating the graph as undirected and
     # line-agnostic is what makes that work.
@@ -144,6 +147,7 @@ async def test_a_station_reachable_only_across_lines_still_counts(
 
 
 async def test_a_line_with_no_track_is_caught(db: AsyncSession) -> None:
+    """A line with no track is caught."""
     # London Overground in the 2021 database: a row in `lines`, 85 stations,
     # and zero connections.
     line = await build_line(db, "victoria")
@@ -166,6 +170,7 @@ async def test_a_line_with_no_track_is_caught(db: AsyncSession) -> None:
 
 
 async def test_a_station_serving_no_line_is_caught(db: AsyncSession) -> None:
+    """A station serving no line is caught."""
     # 120 of the 486 rows in the 2021 stations table had no connections at
     # all - the entire Overground import.
     line = await build_line(db, "victoria")
@@ -189,6 +194,7 @@ async def test_a_station_serving_no_line_is_caught(db: AsyncSession) -> None:
 async def test_an_empty_database_does_not_report_a_healthy_graph(
     db: AsyncSession,
 ) -> None:
+    """An empty database does not report a healthy graph."""
     # The failure mode that matters most: a seed that wrote nothing must not
     # be able to claim everything is reachable, which is trivially true of
     # zero stations.

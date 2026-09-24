@@ -37,14 +37,7 @@ router = APIRouter(prefix="/lines", tags=["lines"])
     responses={**COMMON_RESPONSES, 200: {"description": "OK"}},
 )
 async def list_lines(session: SessionDep) -> list[LinePublic]:
-    """Every line, ordered by name.
-
-    Args:
-        session: Injected per request.
-
-    Returns:
-        All eleven tube lines with their colours.
-    """
+    """Every line, ordered by name."""
     try:
         return [LinePublic(**row) for row in await station_service.list_lines(session)]
     except OperationalError as exc:

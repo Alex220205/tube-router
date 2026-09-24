@@ -65,17 +65,11 @@ STATUS_TTL_SECONDS = 300
 RETRY_AFTER_SECONDS = 15.0
 
 
+# The lines and when they were fetched. `as_of` is what lets a client
+# say "status from four minutes ago" rather than implying it is current,
+# which matters precisely when the poller has stopped and nobody knows.
 def to_payload(statuses: list[LineStatus]) -> dict[str, Any]:
-    """The JSON shape stored in Redis and pushed over the WebSocket.
-
-    Args:
-        statuses: Output of statuses_from_payload.
-
-    Returns:
-        The lines and when they were fetched. `as_of` is what lets a client
-        say "status from four minutes ago" rather than implying it is current,
-        which matters precisely when the poller has stopped and nobody knows.
-    """
+    """The JSON shape stored in Redis and pushed over the WebSocket."""
     return {
         "as_of": datetime.now(UTC).isoformat(),
         "lines": [
@@ -92,18 +86,12 @@ def to_payload(statuses: list[LineStatus]) -> dict[str, Any]:
     }
 
 
+# The statuses, or None if TfL could not be reached or said nothing
+# usable. None means "no news" - the previous entry in Redis is left
+# alone rather than being replaced with an empty list, because an empty
+# list would read as "every line is fine" to anything that saw it.
 async def poll_once(tfl: TfLClient) -> list[LineStatus] | None:
-    """Fetch, parse and store one round of status.
-
-    Args:
-        tfl: An open client.
-
-    Returns:
-        The statuses, or None if TfL could not be reached or said nothing
-        usable. None means "no news" - the previous entry in Redis is left
-        alone rather than being replaced with an empty list, because an empty
-        list would read as "every line is fine" to anything that saw it.
-    """
+    """Fetch, parse and store one round of status."""
     try:
         payload = await tfl.line_status()
     except (TimeoutError, TfLError, OSError):
@@ -118,17 +106,7 @@ async def poll_once(tfl: TfLClient) -> list[LineStatus] | None:
 
 
 async def run(stop: asyncio.Event | None = None) -> None:
-    """Poll until told to stop. Started from the application's lifespan.
-
-    Args:
-        stop: Set to end the loop. Tests pass one; the application relies on
-            task cancellation instead.
-
-    Every failure is contained. TfL being down, slow, or serving HTML must not
-    end this task, because a task that dies takes live status with it and
-    leaves no trace on the page - the status simply stops changing, which
-    looks exactly like a quiet day on the Underground.
-    """
+    """Poll until told to stop. Started from the application's lifespan."""
     settings = get_settings()
     stop = stop or asyncio.Event()
     previous: list[LineStatus] | None = None
@@ -172,58 +150,47 @@ async def run(stop: asyncio.Event | None = None) -> None:
                 await asyncio.wait_for(stop.wait(), timeout=delay)
 
 
+# The stored payload, or an empty one when the poller has not run yet or
+# Redis is unreachable. Empty rather than an error: "I do not know yet"
+# is a truthful answer to a well-formed question, and a client can render
+# it as "status unavailable" instead of a failure.
 async def current() -> dict[str, Any]:
-    """The last known status, for GET /status and a new WebSocket client.
-
-    Returns:
-        The stored payload, or an empty one when the poller has not run yet or
-        Redis is unreachable. Empty rather than an error: "I do not know yet"
-        is a truthful answer to a well-formed question, and a client can render
-        it as "status unavailable" instead of a failure.
-    """
+    """The last known status, for GET /status and a new WebSocket client."""
     stored = await cache.read_json(STATUS_KEY)
     if isinstance(stored, dict) and isinstance(stored.get("lines"), list):
         return stored
     return {"as_of": None, "lines": []}
 
 
+# The lines a route must avoid. Empty when the poller has not run yet,
+# when Redis is unreachable, or on a good day - and all three are the
+# same answer on purpose. An unknown status must not remove lines from
+# the network, because the failure that strands someone is refusing a
+# journey that was perfectly possible.
 async def not_running_lines() -> frozenset[str]:
-    """Line codes with no trains on them, from the last known status.
-
-    Returns:
-        The lines a route must avoid. Empty when the poller has not run yet,
-        when Redis is unreachable, or on a good day - and all three are the
-        same answer on purpose. An unknown status must not remove lines from
-        the network, because the failure that strands someone is refusing a
-        journey that was perfectly possible.
-    """
+    """Line codes with no trains on them, from the last known status."""
     return frozenset(
         code for code, stops in (await _suppressions()).items() if not stops
     )
 
 
+# Line code to NaPTAN ids, for Network.without_closed_sections. Lines
+# that are wholly shut are not here - they come back from
+# not_running_lines instead, and the two sets never overlap.
 async def closed_sections() -> dict[str, frozenset[str]]:
-    """The shut stretch of each partly closed line, from the last known status.
-
-    Returns:
-        Line code to NaPTAN ids, for Network.without_closed_sections. Lines
-        that are wholly shut are not here - they come back from
-        not_running_lines instead, and the two sets never overlap.
-    """
+    """The shut stretch of each partly closed line, from the last known status."""
     return {code: stops for code, stops in (await _suppressions()).items() if stops}
 
 
+# An empty set of stops means the whole line. Both callers above read this
+# so the split between "all of it" and "part of it" is decided once.
+#
+# Empty overall when the poller has not run, when Redis is unreachable, or
+# on a good day, and all three are the same answer on purpose: an unknown
+# status must not remove lines from the network, because the failure that
+# strands someone is refusing a journey that was perfectly possible.
 async def _suppressions() -> dict[str, frozenset[str]]:
-    """Every line with no trains, mapped to the stops that are shut.
-
-    An empty set of stops means the whole line. Both callers above read this
-    so the split between "all of it" and "part of it" is decided once.
-
-    Empty overall when the poller has not run, when Redis is unreachable, or
-    on a good day, and all three are the same answer on purpose: an unknown
-    status must not remove lines from the network, because the failure that
-    strands someone is refusing a journey that was perfectly possible.
-    """
+    """Every line with no trains, mapped to the stops that are shut."""
     stored = await current()
     lines = stored.get("lines")
     if not isinstance(lines, list):

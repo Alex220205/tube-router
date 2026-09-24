@@ -38,16 +38,7 @@ router = APIRouter(tags=["status"])
 
 @router.websocket("/ws/status")
 async def status_socket(websocket: WebSocket) -> None:
-    """Send the current status, then every change until the client leaves.
-
-    Args:
-        websocket: The connection, accepted here rather than by a dependency
-            so the first message can go out before anything else happens.
-
-    There is no authentication and nothing is read from the client. This is a
-    broadcast of public information, and a socket that ignores whatever is
-    sent to it cannot be talked into doing anything.
-    """
+    """Send the current status, then every change until the client leaves."""
     await websocket.accept()
 
     try:

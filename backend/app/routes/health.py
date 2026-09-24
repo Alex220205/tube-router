@@ -50,15 +50,7 @@ responses = {
     responses={**responses, 200: {"description": "OK"}},
 )
 async def get_health(session: SessionDep, settings: SettingsDep) -> HealthResponse:
-    """Report service and database status.
-
-    Args:
-        session: Session for the reachability check. Injected per request.
-        settings: Application settings, for the version string.
-
-    Returns:
-        status "ok" when Postgres answered, "degraded" when it did not.
-    """
+    """Report service and database status."""
     database: Literal["ok", "unreachable"] = "ok"
     try:
         # Cheapest possible round trip. The point is to prove the connection

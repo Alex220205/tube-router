@@ -90,21 +90,22 @@ class FakeSession:
     """Stands in for AsyncSession. Answers queries, or refuses to."""
 
     def __init__(self, *, reachable: bool = True) -> None:
+        """Behave as a database that does or does not answer."""
         self.reachable = reachable
 
+    # OperationalError: when this session was built unreachable, which
+    #     is what SQLAlchemy raises for a connection that is refused.
     async def execute(self, statement: Any) -> None:
-        """Pretend to run a statement.
-
-        Raises:
-            OperationalError: when this session was built unreachable, which
-                is what SQLAlchemy raises for a connection that is refused.
-        """
+        """Pretend to run a statement."""
         if not self.reachable:
             raise OperationalError("SELECT 1", {}, Exception("connection refused"))
 
 
 def _client_with(*, reachable: bool) -> AsyncClient:
+    """An API client whose database is a fake that does or does not answer."""
+
     async def override_get_db() -> AsyncIterator[FakeSession]:
+        """Hand every request the fake session instead of a real one."""
         yield FakeSession(reachable=reachable)
 
     app.dependency_overrides[get_db] = override_get_db
@@ -132,16 +133,11 @@ async def client_db_down() -> AsyncIterator[AsyncClient]:
 # --- Schema tests: a real database ------------------------------------------
 
 
+# Synchronous on purpose. Alembic's env.py calls asyncio.run(), which fails
+# if there is already a running loop - so this must not be an async fixture.
 @pytest.fixture(scope="session")
 def migrated_database() -> Iterator[str]:
-    """Bring the test database up to head, once per session.
-
-    Synchronous on purpose. Alembic's env.py calls asyncio.run(), which fails
-    if there is already a running loop - so this must not be an async fixture.
-
-    Yields:
-        The URL of a database whose schema is at head.
-    """
+    """Bring the test database up to head, once per session."""
     if not TEST_DATABASE_URL:
         pytest.skip("TEST_DATABASE_URL is unset")
 
@@ -155,39 +151,33 @@ def migrated_database() -> Iterator[str]:
     # no-op, and CI gets a fresh container every time regardless.
 
 
+# get_network caches the built Network for the life of the process, which
+# is right in production and wrong here: each test rolls its database back
+# and seeds its own, so the second test to call /route would be answered
+# from the first test's graph.
+#
+# Autouse and unconditional. It costs nothing when no test builds one, and
+# the failure it prevents is the confusing kind - a passing suite whose
+# tests only pass in the order they happen to run.
 @pytest.fixture(autouse=True)
 def fresh_network() -> Iterator[None]:
-    """Drop the process-wide routing graph around every test.
-
-    get_network caches the built Network for the life of the process, which
-    is right in production and wrong here: each test rolls its database back
-    and seeds its own, so the second test to call /route would be answered
-    from the first test's graph.
-
-    Autouse and unconditional. It costs nothing when no test builds one, and
-    the failure it prevents is the confusing kind - a passing suite whose
-    tests only pass in the order they happen to run.
-    """
+    """Drop the process-wide routing graph around every test."""
     graph_loader.forget()
     yield
     graph_loader.forget()
 
 
+# get_db is overridden to hand back the *same* session the test is using,
+# so rows a test flushes are visible to the endpoint it then calls, and the
+# whole lot is rolled back afterwards. Without this the endpoint would open
+# its own session, see an empty database, and every test would have to
+# commit - leaving debris behind.
 @pytest.fixture
 async def api(db: AsyncSession) -> AsyncIterator[AsyncClient]:
-    """An HTTP client whose endpoints share the test's own transaction.
-
-    get_db is overridden to hand back the *same* session the test is using,
-    so rows a test flushes are visible to the endpoint it then calls, and the
-    whole lot is rolled back afterwards. Without this the endpoint would open
-    its own session, see an empty database, and every test would have to
-    commit - leaving debris behind.
-
-    Yields:
-        A client bound to the app, driven in-process.
-    """
+    """An HTTP client whose endpoints share the test's own transaction."""
 
     async def override_get_db() -> AsyncIterator[AsyncSession]:
+        """Hand every request the test's own session, so its rows are visible."""
         yield db
 
     app.dependency_overrides[get_db] = override_get_db
@@ -198,19 +188,14 @@ async def api(db: AsyncSession) -> AsyncIterator[AsyncClient]:
     app.dependency_overrides.clear()
 
 
+# The session runs inside a transaction that is always rolled back, so a
+# test can insert whatever it likes - including rows that violate a
+# constraint - without leaking into the next one. That matters more than
+# usual here: several tests deliberately abort their transaction, and
+# without the rollback the database would carry that state forward.
 @pytest.fixture
 async def db(migrated_database: str) -> AsyncIterator[AsyncSession]:
-    """A session whose work is discarded when the test ends.
-
-    The session runs inside a transaction that is always rolled back, so a
-    test can insert whatever it likes - including rows that violate a
-    constraint - without leaking into the next one. That matters more than
-    usual here: several tests deliberately abort their transaction, and
-    without the rollback the database would carry that state forward.
-
-    Yields:
-        A session bound to an open transaction on the test database.
-    """
+    """A session whose work is discarded when the test ends."""
     engine = create_async_engine(migrated_database, poolclass=NullPool)
     async with engine.connect() as connection:
         transaction = await connection.begin()

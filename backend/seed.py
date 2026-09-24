@@ -66,22 +66,15 @@ from app.services.tfl import TfLClient, TfLError
 DIRECTIONS = ("inbound", "outbound")
 
 
+# The seed makes a few hundred requests, and silence during them is
+# indistinguishable from a hang.
 def log(message: str) -> None:
-    """Print progress. The seed makes a few hundred requests and silence
-    during it is indistinguishable from a hang."""
+    """Print one line of progress, flushed immediately."""
     print(message, flush=True)
 
 
 async def fetch_everything(tfl: TfLClient) -> dict[str, object]:
-    """Collect every payload the seed needs, in as few requests as possible.
-
-    Args:
-        tfl: An open client.
-
-    Returns:
-        The raw payloads, untransformed. Keeping fetch separate from
-        transform is what lets the transforms be tested without a network.
-    """
+    """Collect every payload the seed needs, in as few requests as possible."""
     log("fetching lines ...")
     lines_payload = await tfl.tube_lines()
     line_codes = [line["id"] for line in lines_payload]

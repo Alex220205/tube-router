@@ -39,6 +39,7 @@ import { useLiveStatus } from './hooks/useLiveStatus'
 import { useNetwork } from './hooks/useNetwork'
 import { useRoute } from './hooks/useRoute'
 
+/** The page: the map, the planner beside it, and the state they share. */
 export default function App() {
   const [mapError, setMapError] = useState(null)
 

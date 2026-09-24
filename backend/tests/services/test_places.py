@@ -69,21 +69,20 @@ def client(handler, **kwargs) -> GoogleMapsClient:
     """A client wired to a MockTransport instead of the network."""
     return GoogleMapsClient(
         api_key=kwargs.pop("api_key", "test-key"),
-        transport=httpx.MockTransport(handler),  # type: ignore[arg-type]
+        transport=httpx.MockTransport(handler),
         **kwargs,
     )
 
 
+# A key in a query string is a key in every access log, proxy and browser
+# history between here and Google. It is the same class of mistake as a key
+# in a source file, which is the one this project exists to correct.
 async def test_the_key_is_sent_as_a_header_and_never_in_the_url() -> None:
-    """The whole argument of this phase, asserted rather than assumed.
-
-    A key in a query string is a key in every access log, proxy and browser
-    history between here and Google. It is the same class of mistake as a key
-    in a source file, which is the one this project exists to correct.
-    """
+    """The whole argument of this phase, asserted rather than assumed."""
     seen: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        """Record the request and answer with the sample places."""
         seen.append(request)
         return httpx.Response(200, json=NEARBY_BODY)
 
@@ -105,16 +104,15 @@ async def test_the_key_is_sent_as_a_header_and_never_in_the_url() -> None:
     )
 
 
+# Without it, every open of the panel on a machine with no key still
+# reaches Google, gets a 403, retries it twice, and is billed for all
+# three. The first sign would be an invoice.
 async def test_a_blank_key_makes_no_request_at_all() -> None:
-    """The line that stops an unconfigured deployment costing money.
-
-    Without it, every open of the panel on a machine with no key still
-    reaches Google, gets a 403, retries it twice, and is billed for all
-    three. The first sign would be an invoice.
-    """
+    """The line that stops an unconfigured deployment costing money."""
     calls = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
+        """Count a request, which should never be made."""
         nonlocal calls
         calls += 1
         return httpx.Response(200, json=NEARBY_BODY)
@@ -135,6 +133,7 @@ async def test_a_server_error_is_retried_and_then_succeeds() -> None:
     attempts = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
+        """Fail once with a 503, then answer."""
         nonlocal attempts
         attempts += 1
         if attempts == 1:
@@ -156,13 +155,15 @@ async def test_a_server_error_is_retried_and_then_succeeds() -> None:
     assert found[0].metres < 50
 
 
+# Retrying a 400 is being wrong three times more slowly, and paying for each
+# one. 403 is the same: a rejected key is still a rejected key on the third
+# attempt.
 async def test_a_client_error_is_not_retried() -> None:
-    """Retrying a 400 is being wrong three times more slowly, and paying for
-    each one. 403 is the same: a rejected key is still a rejected key on the
-    third attempt."""
+    """A 4xx from Google is raised on the first attempt, never retried."""
     attempts = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
+        """Refuse every request with a 403."""
         nonlocal attempts
         attempts += 1
         return httpx.Response(403, json={"error": {"message": "denied"}})
@@ -174,26 +175,25 @@ async def test_a_client_error_is_not_retried() -> None:
     assert attempts == 1
 
 
+# Most places on Earth have no accessibility data recorded. Google sends no
+# `accessibilityOptions` key at all for those, and sends the key without
+# `wheelchairAccessibleEntrance` for places where something else is known.
+#
+# Both must come back as None, not False. The page marks True and says
+# nothing for None, so a False here would put "not accessible" on a
+# restaurant nobody has ever checked - a confident lie about a real
+# business, told to the one person who most needs it to be right.
+#
+# The field mask is asserted alongside it, because the whole feature is one
+# path in that string and dropping it fails silently: every place would
+# simply come back unrecorded, which looks exactly like a network where
+# nobody has recorded anything.
 async def test_accessibility_is_claimed_only_when_google_says_so() -> None:
-    """True is a fact; absent is not a denial.
-
-    Most places on Earth have no accessibility data recorded. Google sends no
-    `accessibilityOptions` key at all for those, and sends the key without
-    `wheelchairAccessibleEntrance` for places where something else is known.
-
-    Both must come back as None, not False. The page marks True and says
-    nothing for None, so a False here would put "not accessible" on a
-    restaurant nobody has ever checked - a confident lie about a real
-    business, told to the one person who most needs it to be right.
-
-    The field mask is asserted alongside it, because the whole feature is one
-    path in that string and dropping it fails silently: every place would
-    simply come back unrecorded, which looks exactly like a network where
-    nobody has recorded anything.
-    """
+    """True is a fact; absent is not a denial."""
     seen: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        """Record the request and answer with the sample places."""
         seen.append(request)
         return httpx.Response(200, json=NEARBY_BODY)
 
@@ -210,21 +210,20 @@ async def test_accessibility_is_claimed_only_when_google_says_so() -> None:
     assert by_name["Half Known Cafe"] is None
 
 
+# A category is a human idea and Google's types are narrower than it: Table
+# A files a pub apart from a bar, and a park apart from a garden and a
+# historical landmark. Sending one type per category returned two places to
+# eat at Epping and nothing at all to look at.
+#
+# This asserts the expansion reaches the request, because a category that
+# quietly narrowed back to one type would still return a plausible short
+# list and nothing would raise.
 async def test_a_category_asks_for_every_type_it_covers() -> None:
-    """The fix for a list that was empty outside zone 1.
-
-    A category is a human idea and Google's types are narrower than it: Table
-    A files a pub apart from a bar, and a park apart from a garden and a
-    historical landmark. Sending one type per category returned two places to
-    eat at Epping and nothing at all to look at.
-
-    This asserts the expansion reaches the request, because a category that
-    quietly narrowed back to one type would still return a plausible short
-    list and nothing would raise.
-    """
+    """The fix for a list that was empty outside zone 1."""
     seen: list[dict] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        """Record the request body and answer with the sample places."""
         import json
 
         seen.append(json.loads(request.content))

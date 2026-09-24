@@ -55,6 +55,7 @@ def route_between(
     objective: Objective = Objective.FASTEST,
     avoid: frozenset[str] = frozenset(),
 ) -> Route | NoRoute:
+    """Plan a route between two stations with the given objective."""
     return find_route(
         network,
         RouteQuery(
@@ -67,6 +68,7 @@ def route_between(
 
 
 def test_a_straight_line_is_one_leg_with_no_changes() -> None:
+    """A straight line is one leg with no changes."""
     # A --60-- B --120-- C --60-- D, all on red. 60 + 120 + 60 = 240.
     result = route_between(straight_line(), "A", "D")
 
@@ -79,6 +81,7 @@ def test_a_straight_line_is_one_leg_with_no_changes() -> None:
 
 
 def test_the_cheaper_of_two_routes_wins() -> None:
+    """The cheaper of two routes wins."""
     # Via B costs 120, via C costs 200. Both are on red, so this isolates the
     # search's choice from anything to do with changing.
     result = route_between(diamond(), "A", "D")
@@ -89,6 +92,7 @@ def test_the_cheaper_of_two_routes_wins() -> None:
 
 
 def test_a_change_costs_what_the_interchange_says() -> None:
+    """A change costs what the interchange says."""
     # A --60-- B on red, B --60-- D on blue, changing at B costs 90.
     # 60 + 90 + 60 = 210. A station-only graph would answer 120 and be wrong
     # by the entire cost of changing - which is why nodes are (station, line).
@@ -100,6 +104,7 @@ def test_a_change_costs_what_the_interchange_says() -> None:
 
 
 def test_legs_are_split_at_the_change_and_exclude_the_walk() -> None:
+    """Legs are split at the change and exclude the walk."""
     result = route_between(two_lines(), "A", "D")
 
     assert isinstance(result, Route)
@@ -115,6 +120,7 @@ def test_legs_are_split_at_the_change_and_exclude_the_walk() -> None:
 
 
 def test_an_expensive_change_makes_the_longer_ride_the_faster_route() -> None:
+    """An expensive change makes the longer ride the faster route."""
     # Staying on red costs 200. Changing at B costs 60 + 300 + 60 = 420.
     # Only a search that prices the change can tell, and getting this wrong is
     # invisible - both answers look like routes.
@@ -126,12 +132,10 @@ def test_an_expensive_change_makes_the_longer_ride_the_faster_route() -> None:
     assert result.legs[0].stations == ("A", "C", "D")
 
 
+# `unseenNodes = self.graph` at line 532 aliased the graph; `pop` at line
+# 557 emptied it. The second search on the same object traversed nothing.
 def test_the_same_network_can_be_searched_twice() -> None:
-    """The regression test for the 2021 aliasing bug.
-
-    `unseenNodes = self.graph` at line 532 aliased the graph; `pop` at line
-    557 emptied it. The second search on the same object traversed nothing.
-    """
+    """The regression test for the 2021 aliasing bug."""
     network = straight_line()
     query = RouteQuery(origin="A", destination="D")
 
@@ -145,6 +149,7 @@ def test_the_same_network_can_be_searched_twice() -> None:
 
 
 def test_two_islands_are_disconnected_not_an_error() -> None:
+    """Two islands are disconnected, not an error."""
     # The 2021 database in miniature: two Central line branches and the whole
     # Overground sat unreachable, and nothing ever asked.
     result = route_between(two_islands(), "A", "C")
@@ -153,6 +158,7 @@ def test_two_islands_are_disconnected_not_an_error() -> None:
 
 
 def test_one_way_track_has_no_route_back() -> None:
+    """One-way track has no route back."""
     # Modelled on the Heathrow terminal loop. Storing edges undirected would
     # have invented a return journey that does not exist.
     assert isinstance(route_between(one_way_pair(), "A", "B"), Route)
@@ -160,6 +166,7 @@ def test_one_way_track_has_no_route_back() -> None:
 
 
 def test_unknown_stations_say_which_one_was_unknown() -> None:
+    """Unknown stations say which one was unknown."""
     # A station that does not exist is a different problem from two that are
     # not connected, and a caller wants different words in front of a user.
     network = straight_line()
@@ -169,6 +176,7 @@ def test_unknown_stations_say_which_one_was_unknown() -> None:
 
 
 def test_origin_equal_to_destination_is_an_empty_route_not_an_error() -> None:
+    """Origin equal to destination is an empty route, not an error."""
     # "You are already there" is a correct answer to a reasonable question -
     # the same reasoning that made an empty station search a 200 in Phase 3.
     result = route_between(straight_line(), "B", "B")
@@ -177,21 +185,20 @@ def test_origin_equal_to_destination_is_an_empty_route_not_an_error() -> None:
 
 
 def test_a_single_station_network_does_not_crash() -> None:
+    """A single station network does not crash."""
     network = single_station()
 
     assert route_between(network, "A", "A") == Route()
     assert route_between(network, "A", "B") == NoRoute("unknown_destination")
 
 
+# Quick route: 30 + 20 + 30 + 20 + 30 = 130 seconds across three lines.
+# Direct route: 300 seconds on one.
+#
+# If both objectives agreed here, FEWEST_CHANGES would be FASTEST under
+# another name and every other test of it would still pass.
 def test_fastest_and_fewest_changes_return_different_routes() -> None:
-    """The test that proves FEWEST_CHANGES exists.
-
-    Quick route: 30 + 20 + 30 + 20 + 30 = 130 seconds across three lines.
-    Direct route: 300 seconds on one.
-
-    If both objectives agreed here, FEWEST_CHANGES would be FASTEST under
-    another name and every other test of it would still pass.
-    """
+    """The test that proves FEWEST_CHANGES exists."""
     network = fastest_differs_from_fewest_changes()
 
     quickest = route_between(network, "A", "D")
@@ -206,14 +213,12 @@ def test_fastest_and_fewest_changes_return_different_routes() -> None:
     assert [leg.line for leg in simplest.legs] == ["green"]
 
 
+# Snaresbrook to Barons Court returned 48 minutes with three changes while a
+# 48-minute route with one change existed. Both are optimal by time, so the
+# search was returning whichever it reached first - an answer decided by
+# heap ordering rather than by the question.
 def test_fastest_breaks_ties_on_fewest_changes() -> None:
-    """The mirror of the test below, and it came from the real network.
-
-    Snaresbrook to Barons Court returned 48 minutes with three changes while a
-    48-minute route with one change existed. Both are optimal by time, so the
-    search was returning whichever it reached first - an answer decided by
-    heap ordering rather than by the question.
-    """
+    """The mirror of the test below, and it came from the real network."""
     result = route_between(equally_fast_one_needs_a_change(), "A", "D")
 
     assert isinstance(result, Route)
@@ -223,6 +228,7 @@ def test_fastest_breaks_ties_on_fewest_changes() -> None:
 
 
 def test_fewest_changes_breaks_ties_on_time() -> None:
+    """Fewest changes breaks ties on time."""
     # Both routes through the diamond stay on `red`, so both have zero
     # changes. Without a tie-break the answer would depend on heap ordering
     # and could differ between runs; the second element of the cost tuple is
@@ -235,6 +241,7 @@ def test_fewest_changes_breaks_ties_on_time() -> None:
 
 
 def test_fewest_changes_still_reports_the_real_journey_time() -> None:
+    """Fewest changes still reports the real journey time."""
     # The priority key is (changes, seconds), and total_seconds is rebuilt
     # from the edges rather than read off that key. If the two were ever
     # conflated a fewest-changes route would report its change count as a
@@ -250,6 +257,7 @@ def test_fewest_changes_still_reports_the_real_journey_time() -> None:
 
 
 def test_changes_matches_the_leg_count_under_every_objective() -> None:
+    """The changes count matches the leg count under every objective."""
     # Derived rather than counted, so the two cannot drift apart. Asserted for
     # all three because each takes a different path through _build_route.
     network = fastest_differs_from_fewest_changes()
@@ -262,6 +270,7 @@ def test_changes_matches_the_leg_count_under_every_objective() -> None:
 
 
 def test_the_step_free_route_is_slower_and_both_are_real() -> None:
+    """The step-free route is slower and both are real."""
     # 120 seconds via B crosses a step; 300 via C does not. Both are genuine
     # routes, which is the point - a step-free search that quietly returned
     # the fastest one would look correct until somebody relied on it.
@@ -281,6 +290,7 @@ def test_the_step_free_route_is_slower_and_both_are_real() -> None:
 
 
 def test_step_free_that_cuts_the_destination_off_is_disconnected() -> None:
+    """A step-free query that cuts the destination off is disconnected."""
     # Every way into D crosses a step. D still exists, so the honest answer is
     # "disconnected" - reporting "unknown_destination" would have the engine
     # denying a station it can see, and that is why step_free_only() keeps
@@ -292,6 +302,7 @@ def test_step_free_that_cuts_the_destination_off_is_disconnected() -> None:
 
 
 def test_avoiding_a_line_forces_the_other_route() -> None:
+    """Avoiding a line forces the other route."""
     # Without the blue line the three-line route is broken at B, so the only
     # way to D is the slow direct one. Phase 7 uses this to route around a
     # suspended line.
@@ -308,6 +319,7 @@ def test_avoiding_a_line_forces_the_other_route() -> None:
 
 
 def test_avoiding_every_line_is_a_no_route_rather_than_a_crash() -> None:
+    """Avoiding every line is a NoRoute rather than a crash."""
     network = fastest_differs_from_fewest_changes()
 
     result = route_between(
@@ -318,6 +330,7 @@ def test_avoiding_every_line_is_a_no_route_rather_than_a_crash() -> None:
 
 
 def test_a_fastest_route_reports_step_free_honestly() -> None:
+    """A fastest route reports step-free honestly."""
     # step_free is reported for every objective, not only STEP_FREE, and it
     # must not over-claim. The fastest route here ends on red at D, whose red
     # platform is inaccessible - so the answer is a route that is not
@@ -330,6 +343,7 @@ def test_a_fastest_route_reports_step_free_honestly() -> None:
 
 
 def test_an_inaccessible_origin_has_no_step_free_route() -> None:
+    """An inaccessible origin has no step-free route."""
     # The mirror of the destination case. A model that only checked where you
     # were going would pass every test above and still tell someone who cannot
     # reach the platform that their journey is step-free.
@@ -345,18 +359,16 @@ def test_an_inaccessible_origin_has_no_step_free_route() -> None:
     )
 
 
+# Two of 6006 real routes reported a total their own legs could not account
+# for. The cause was in the seed - interchange costs that did not obey the
+# triangle inequality, so a chained walk undercut the direct one by a second
+# and the zero-length leg it produced was silently dropped here.
+#
+# The data is fixed, so this can no longer happen. It is asserted anyway,
+# because a caller that cannot reproduce the number it was handed has been
+# given an answer it cannot trust.
 def test_the_legs_and_the_changes_account_for_the_whole_total() -> None:
-    """The invariant that caught Issue #1, kept as a guard.
-
-    Two of 6006 real routes reported a total their own legs could not account
-    for. The cause was in the seed - interchange costs that did not obey the
-    triangle inequality, so a chained walk undercut the direct one by a second
-    and the zero-length leg it produced was silently dropped here.
-
-    The data is fixed, so this can no longer happen. It is asserted anyway,
-    because a caller that cannot reproduce the number it was handed has been
-    given an answer it cannot trust.
-    """
+    """The invariant that caught Issue #1, kept as a guard."""
     network = fastest_differs_from_fewest_changes()
 
     for objective in Objective:

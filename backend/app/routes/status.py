@@ -34,30 +34,26 @@ from app.services import status_poller
 router = APIRouter(prefix="/status", tags=["status"])
 
 
+# The lines and when they were fetched. When the poller has not run yet,
+# or Redis is unreachable, `as_of` is null and `lines` is empty - a 200,
+# not a 503.
+#
+# That follows Phase 3's rule for an empty station search: "I do not
+# know yet" is a truthful answer to a well-formed question. A 503 would
+# say the service is broken when it is working correctly, and would make
+# the frontend render an error over a condition that resolves itself
+# within a minute of startup.
+#
+# HTTPException: 500 if reading the cache fails in a way core/cache.py
+#     does not already absorb, which would mean a bug here rather than a
+#     missing dependency.
 @router.get(
     "",
     response_model=StatusResponse,
     responses={**COMMON_RESPONSES, 200: {"description": "OK"}},
 )
 async def line_status() -> StatusResponse:
-    """Live status for every tube line.
-
-    Returns:
-        The lines and when they were fetched. When the poller has not run yet,
-        or Redis is unreachable, `as_of` is null and `lines` is empty - a 200,
-        not a 503.
-
-        That follows Phase 3's rule for an empty station search: "I do not
-        know yet" is a truthful answer to a well-formed question. A 503 would
-        say the service is broken when it is working correctly, and would make
-        the frontend render an error over a condition that resolves itself
-        within a minute of startup.
-
-    Raises:
-        HTTPException: 500 if reading the cache fails in a way core/cache.py
-            does not already absorb, which would mean a bug here rather than a
-            missing dependency.
-    """
+    """Live status for every tube line."""
     try:
         return StatusResponse(**await status_poller.current())
     except HTTPException:

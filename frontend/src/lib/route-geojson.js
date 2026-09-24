@@ -27,6 +27,7 @@
 import { UNKNOWN_LINE_COLOUR } from './network-geojson'
 import { shortName } from './station-name'
 
+/** A collection with nothing in it, so a source can be cleared in place. */
 const empty = () => ({ type: 'FeatureCollection', features: [] })
 
 /**
