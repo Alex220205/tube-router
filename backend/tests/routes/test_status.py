@@ -1,25 +1,4 @@
-"""
-Tests for the status poller and GET /status.
-
-WHY THIS EXISTS
-    The poller is the only part of this project that runs with no caller, and
-    that changes what a failure means. There is no user watching it and no
-    request to return a 500 to, so a task that dies takes live status with it
-    and leaves nothing on the page to say so - the status simply stops
-    changing, which looks exactly like a quiet day on the Underground.
-
-    Every test here is about that: it keeps going, it does not overwrite good
-    data with nothing, and it does not shout when nothing has happened.
-
-NO 2021 EQUIVALENT
-    The old project read status once at launch into a SQLite column and never
-    refreshed it. There was no poller to test and no endpoint to call.
-
-CONSTRAINT
-    No TfL, no database. Redis is absent, because conftest points REDIS_URL at
-    a dead port for the whole suite - which means these also prove the
-    endpoint answers correctly with no cache at all.
-"""
+"""Tests for the status poller and GET /status."""
 
 import asyncio
 import json
@@ -52,10 +31,6 @@ def client_returning(handler: object) -> TfLClient:
     )
 
 
-# This is the state for the first minute after every restart. A 503 would
-# make the frontend render an error over a condition that resolves itself,
-# and would say the service is broken while it is working correctly - the
-# same reasoning that made an empty station search a 200 in Phase 3.
 async def test_status_before_the_poller_has_run_is_a_200_not_an_error(
     client: AsyncClient,
 ) -> None:
@@ -87,10 +62,9 @@ async def test_a_poll_stores_what_tfl_said(monkeypatch: pytest.MonkeyPatch) -> N
     assert len(written["lines"]) == 11
 
 
-# An unreachable TfL must not overwrite Redis with an empty list. An empty
-# list reads as "every line is fine" to anything that sees it, so the failure
-# mode would be a page confidently reporting Good Service across a network
-# with two lines suspended.
+# An unreachable TfL must not overwrite Redis with an empty list. An empty list reads as
+# "every line is fine" to anything that sees it, so the failure mode would be a page
+# confidently reporting Good Service across a network with two lines suspended.
 async def test_a_failed_poll_leaves_the_last_good_status_alone(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -119,8 +93,8 @@ async def test_a_payload_with_nothing_usable_is_also_left_alone(
 ) -> None:
     """A payload with nothing usable is also left alone."""
 
-    # TfL serves HTML during maintenance and occasionally an empty array. Both
-    # parse to no statuses, and neither is a reason to forget what we knew.
+    # TfL serves HTML during maintenance and occasionally an empty array. Both parse to
+    # no statuses, and neither is a reason to forget what we knew.
     async def fake_write(key: str, value: object, ttl_seconds: int) -> None:
         """Fail the test, because an empty status must not be written."""
         raise AssertionError("should not write an empty status")
@@ -131,8 +105,8 @@ async def test_a_payload_with_nothing_usable_is_also_left_alone(
         assert await status_poller.poll_once(tfl) is None
 
 
-# If an exception escaped `run`, the poller would stop permanently and the
-# only symptom would be status that never changes again.
+# If an exception escaped `run`, the poller would stop permanently and the only symptom
+# would be status that never changes again.
 async def test_the_loop_survives_a_failing_poll_and_tries_again(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -142,10 +116,6 @@ async def test_the_loop_survives_a_failing_poll_and_tries_again(
 
     async def exploding(tfl: object) -> None:
         """Raise on every poll, and stop the loop on the third."""
-        # Counts, then ends the loop itself on the third call. Driven by the
-        # loop rather than by a sleep racing it: "more than one call happened
-        # in 150ms" passes alone and fails on a loaded machine, which is issue
-        # #12 in different words.
         nonlocal calls
         calls += 1
         if calls >= 3:
@@ -155,8 +125,8 @@ async def test_the_loop_survives_a_failing_poll_and_tries_again(
     monkeypatch.setattr(status_poller, "poll_once", exploding)
     monkeypatch.setattr(status_poller, "RETRY_AFTER_SECONDS", 0.0)
 
-    # If the exception escaped `run`, stop is never set and this times out -
-    # the failure being guarded against, reported as a failure.
+    # If the exception escaped `run`, stop is never set and this times out - the failure
+    # being guarded against, reported as a failure.
     await asyncio.wait_for(status_poller.run(stop), timeout=10)
 
     assert calls == 3
@@ -166,9 +136,9 @@ async def test_an_unchanged_picture_is_not_published(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An unchanged picture is not published."""
-    # Sixty polls an hour with a push each would wake every connected browser
-    # sixty times to say nothing happened, and a client that learns to ignore
-    # the channel is worse than no channel.
+    # Sixty polls an hour with a push each would wake every connected browser sixty
+    # times to say nothing happened, and a client that learns to ignore the channel is
+    # worse than no channel.
     published: list[object] = []
 
     async def fake_publish(channel: str, value: object) -> None:
@@ -202,8 +172,8 @@ async def test_status_reports_what_the_cache_holds(
     client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """GET /status reports what the cache holds."""
-    # The positive counterpart to the empty case: when the poller has run, the
-    # endpoint serves what it stored rather than an empty shell.
+    # The positive counterpart to the empty case: when the poller has run, the endpoint
+    # serves what it stored rather than an empty shell.
     stored = status_poller.to_payload(statuses_from_payload(payload()))
 
     async def fake_read(key: str) -> object:

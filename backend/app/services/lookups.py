@@ -1,33 +1,4 @@
-"""
-Cached answers from Google about a station, or about somewhere typed in.
-
-WHY THIS EXISTS
-    Places near a station, the street outside it, and typed text resolved to
-    stations all have the same shape: check the cache, ask Google, shape the
-    answer, keep it. That shape is written once here, and the handlers in
-    routes/places.py and routes/geocode.py only validate input and answer.
-
-    It also puts the decision all three share in one place: when Google is
-    unreachable or refuses, the feature goes quiet on the page and loud in
-    the log.
-
-WHAT THE 2021 VERSION DID
-    Where:  database[works].py, lines 237-245 (nearbySearch) and 275-280
-            (getPhoto)
-    How:    Each function asked Places for the same two pages of results,
-            with time.sleep(3) between them on the window's thread.
-    Wrong:  Nothing was kept, so the list and the photographs for one
-            station cost four billed requests for two pages of answers.
-
-WHAT CHANGED AND WHY
-    Every answer is cached in Redis under a versioned key, so only the first
-    request for a station and category costs anything. The client itself is
-    services/places.py; this file never builds a URL.
-
-WHAT'S NEW
-    The geocoding lookup. The old project could only start from a station
-    name, so it had nothing to resolve.
-"""
+"""Cached answers from Google about a station, or about somewhere typed in."""
 
 import base64
 import logging
@@ -43,68 +14,38 @@ from app.services.places import KINDS, GeocodedPlace, GoogleMapsClient, PlacesEr
 
 # The only logger in the backend, and it earns its place.
 #
-# Everything else here either answers or raises, so a failure is visible.
-# This module is the exception: when Google refuses, the endpoint returns
-# `available: false` and the page quietly shows one line - which is right for
-# the reader and leaves the operator with no way to tell "no key" from "bad
-# key" from "Google is down". All three look identical from outside.
-#
-# That is not the same trade core/cache.py makes. A swallowed Redis error
-# still produces the correct answer from the source, so there is nothing to
-# investigate. A swallowed 401 means a feature is off and nobody can say why,
-# which cost two rounds of diagnosis to establish by hand.
+# Everything else here either answers or raises, so a failure is visible. This module is
+# the exception: when Google refuses, the endpoint returns `available: false` and the
+# page quietly shows one line - which is right for the reader and leaves the operator
+# with no way to tell "no key" from "bad key" from "Google is down".
 logger = logging.getLogger(__name__)
 
-# Versioned, as every cache key in this project is. A change to the field
-# mask or to Place changes the shape of what is stored, and a v1 reader
-# meeting a v0 entry is the bug that versioning exists to make impossible.
+# Versioned, as every cache key in this project is. A change to the field mask or to
+# Place changes the shape of what is stored, and a v1 reader meeting a v0 entry is the
+# bug that versioning exists to make impossible.
 PLACES_KEY = "tube-router:places:v2"
 STREET_VIEW_KEY = "tube-router:streetview:v1"
 
-# A week, because a museum does not move and the same handful of landmarks get
-# searched over and over - but not forever, because a new development does
-# appear and an address can be corrected.
+# A week, because a museum does not move and the same handful of landmarks get searched
+# over and over - but not forever, because a new development does appear and an address
+# can be corrected.
 GEOCODE_KEY = "tube-router:geocode:v1"
 GEOCODE_TTL_SECONDS = 604_800
 
-# How many stations to offer per match. Three is enough to cover "the obvious
-# one, and the two you might prefer"; more is a list to read rather than a
-# choice to make.
+# How many stations to offer per match. Three is enough to cover "the obvious one, and
+# the two you might prefer"; more is a list to read rather than a choice to make.
 STATIONS_PER_MATCH = 3
 
-# Beyond this, a match is not somewhere this service can take you, and
-# offering it would be worse than offering nothing.
-#
-# The reason it exists is a real failure, not a hypothetical. Google's
-# `components=country:GB` does not make nonsense fail - it makes nonsense
-# resolve to *Britain*. "zzzzqqqqxxxx" comes back as a confident match called
-# "United Kingdom", at the country centroid in Scotland, and the endpoint
-# then helpfully offered Chesham, 449km away. A wrong answer with a real
-# address on it and a real station under it.
-#
-# Measured before choosing the number:
-#
-#   Heathrow Airport      410m       Bexleyheath      9,710m
-#   Watford             1,467m       Biggin Hill     18,759m
-#   Croydon             7,342m
-#   ---------------------------------- 25km ----------------------------------
-#   Brighton           64,523m       Manchester     226,393m
-#   "zzzzqqqqxxxx"    449,534m
-#
-# 25km keeps every real place on the London fringe, including Biggin Hill
-# which genuinely is nineteen kilometres from a tube station, and rejects
-# everything that is not a journey this network can make.
+# Beyond this, a match is not somewhere the Underground can take you. Restricted to
+# Britain, Google resolves nonsense to the middle of the country rather than failing,
+# with a real address and a real station 450km away. 25km keeps every real place on
+# the London fringe, Biggin Hill included, and rejects that.
 MAX_STATION_DISTANCE_METRES = 25_000
 
 
-# A named function for a one line condition, because it is the guard
-# against the failure described above - a confident match at the centre of
-# Scotland - and a condition buried in a loop is a condition nothing can
-# test. Inverting it, or moving the constant, breaks nothing visible: the
-# endpoint keeps answering 200 with plausible looking addresses.
-#
-# nearby: The nearest stations to a match, nearest first, as
-#     `nearest_to` returns them.
+# A named function for a one line condition, because it is the guard against a
+# confident match in the middle of Scotland, and a condition buried in a loop is a
+# condition nothing can test.
 def reachable(nearby: list[dict]) -> bool:
     """Whether a match is somewhere this network can take you."""
     return bool(nearby) and nearby[0]["metres"] <= MAX_STATION_DISTANCE_METRES
@@ -122,12 +63,8 @@ def _client(settings: Settings) -> GoogleMapsClient:
     )
 
 
-# No key is a state, not an error. The whole feature is optional and the
-# project has to run for someone who has not got one.
-#
-# Google being down is not this service being down either. The route is
-# already on the page; this is an extra that goes quiet - quiet on the page,
-# and loud in the log, because the two audiences need opposite things here.
+# No key is a state, not an error. The whole feature is optional and the project has to
+# run for someone who has not got one.
 async def places_near(
     settings: Settings, naptan_id: str, station: dict, kind: str
 ) -> PlacesResponse:
@@ -169,12 +106,9 @@ async def places_near(
     return answer
 
 
-# Stored base64 because Redis holds text and the cache helper speaks JSON. A
-# 400x200 JPEG is about 20KB, so a third more in Redis is a trade worth making
-# to reuse the helper rather than add a bytes path to it for one caller.
-#
-# PlacesError is logged here and raised on, because the caller turns it into
-# a 404 and the operator still needs to see why.
+# Stored base64 because Redis holds text and the cache helper speaks JSON. A 400x200
+# JPEG is about 20KB, so a third more in Redis is a trade worth making to reuse the
+# helper rather than add a bytes path to it for one caller.
 async def street_view_of(
     settings: Settings, naptan_id: str, station: dict
 ) -> bytes | None:
@@ -203,8 +137,8 @@ async def street_view_of(
     return image
 
 
-# Two halves, and only the first costs money: Google resolves the text to
-# points, and PostGIS finds the stations nearest each one.
+# Two halves, and only the first costs money: Google resolves the text to points, and
+# PostGIS finds the stations nearest each one.
 async def geocode_matches(
     session: AsyncSession, settings: Settings, query: str
 ) -> GeocodeResponse:
@@ -213,8 +147,8 @@ async def geocode_matches(
     if not settings.google_maps_key:
         return empty
 
-    # Case folded, so "British Museum" and "british museum" are one entry
-    # rather than two identical billed calls.
+    # Case folded, so "British Museum" and "british museum" are one entry rather than
+    # two identical billed calls.
     cache_key = f"{GEOCODE_KEY}:{query.casefold()}"
     cached = await cache.read_json(cache_key)
     if cached is not None:
@@ -224,8 +158,8 @@ async def geocode_matches(
         try:
             found = await client.geocode(query)
         except PlacesError as exc:
-            # Quiet on the page, loud in the log. The reader cannot act on a
-            # rejected credential; whoever runs this can.
+            # Quiet on the page, loud in the log. The reader cannot act on a rejected
+            # credential; whoever runs this can.
             logger.warning("geocode failed for %r: %s", query, exc)
             return empty
 
@@ -237,9 +171,8 @@ async def geocode_matches(
     return answer
 
 
-# The nearest-station join is ours, not Google's, so it costs nothing per
-# match and happens after the single billed call rather than inside a loop
-# around one.
+# The nearest-station join is ours, not Google's, so it costs nothing per match and
+# happens after the single billed call rather than inside a loop around one.
 async def _with_nearest_stations(
     session: AsyncSession, found: list[GeocodedPlace]
 ) -> list[GeocodeMatch]:
@@ -250,9 +183,9 @@ async def _with_nearest_stations(
             session, place.latitude, place.longitude, STATIONS_PER_MATCH
         )
 
-        # Dropped rather than returned with a warning. A match the Underground
-        # cannot reach is not a destination this service has an opinion
-        # about, and listing it invites a journey that does not exist.
+        # Dropped rather than returned with a warning. A match the Underground cannot
+        # reach is not a destination this service has an opinion about, and listing it
+        # invites a journey that does not exist.
         if not reachable(nearby):
             continue
 

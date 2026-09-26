@@ -1,57 +1,12 @@
-/**
- * What the marks on the map mean, and what the status wording's colours
- * mean.
- *
- * WHY THIS EXISTS
- *     The map carries five distinct signals - a plain station, a step-free
- *     one, the lines, a drawn route and the dimmed rest of the network - and
- *     until this existed the page explained none of them. TfL's own map
- *     devotes a corner to exactly this, and a blue ring nobody has been told
- *     about is decoration rather than information.
- *
- *     The same argument brought the line status colours in here. The panel
- *     below prints "Part Closure" in red and "Minor Delays" in dark amber,
- *     and those are two different answers to "did this change my journey".
- *     Nowhere else says so.
- *
- *     Collapsed by default. It is reference material: needed once, then in
- *     the way.
- *
- * NO 2021 EQUIVALENT
- *     The old project drew no map. Its output was a list of station names in
- *     a Tkinter label, and a list of names needs no key. A key becomes
- *     necessary the moment information moves from words into marks, which is
- *     what drawing the network did.
- *
- * WHAT'S NEW
- *     The step-free entry, which is the only one carrying information the
- *     shapes cannot. TfL draw a wheelchair symbol; this draws a blue ring,
- *     because a 12px glyph is illegible at the zoom where a whole line fits
- *     and a ring reads at every zoom this map has.
- *
- *     And the status colours, which say what the router did rather than how
- *     bad the disruption sounds. Red and black are the two that changed the
- *     journey; everything warmer was used normally, because a delay is not a
- *     reason to reroute someone without asking.
- *
- *     It is also deliberately narrower than TfL's key. Theirs lists National
- *     Rail, river services, airports, cable car, fare zones and Oyster
- *     validity - none of which this map draws. A key describing marks that
- *     are not there is worse than no key.
- */
+/** What the marks on the map mean, and what the status wording's colours mean. */
 
 import { useState } from 'react'
 import { BAND_ORDER, BANDS } from '../lib/severity'
 
-// Mirrors the paint in TubeMap.jsx. Duplicated rather than imported because
-// those are MapLibre paint values in a WebGL canvas and these are CSS on DOM
-// nodes, so they cannot be the same object - but they must be the same
-// colours, and saying so here is what keeps them honest.
-//
-// Exported because RoutePanel's station list draws the same two marks. This
-// file is what says a blue ring means step-free, so anything else drawing one
-// takes the colour from here rather than deciding for itself. A key that
-// disagrees with the thing it is describing is worse than no key.
+// Mirrors the paint in TubeMap.jsx. Duplicated rather than imported because those are
+// MapLibre paint values in a WebGL canvas and these are CSS on DOM nodes, so they
+// cannot be the same object - but they must be the same colours, and saying so here is
+// what keeps them honest.
 export const INK = '#1c1c1b'
 export const STEP_FREE = '#0019a8'
 
@@ -98,12 +53,8 @@ export default function MapKey({ lines }) {
             so a line between two stations is straight rather than following the track.
           </li>
 
-          {/* The status panel's wording, in the colours it prints them in.
-              Listed worst last so it reads as a scale.
-
-              Each row IS its own swatch: the label is drawn in the same
-              colour the panel uses, so there is nothing to match up between
-              a square here and a word down there. */}
+          {/* The status panel's wording, in the colours it prints them in. Listed
+              worst last so it reads as a scale. */}
           <li className="border-tfl-line mt-2 border-t pt-2">
             <h3 className="text-tfl-grey mb-1 font-bold tracking-wider uppercase">
               Line status
@@ -131,10 +82,9 @@ export default function MapKey({ lines }) {
   )
 }
 
-// What each band means for the journey, not for the railway. "Severe
-// delays" describes the trains; "the router still used it" describes the
-// answer you were given, and that is the thing the colour is here to
-// explain.
+// What each band means for the journey, not for the railway. "Severe delays" describes
+// the trains; "the router still used it" describes the answer you were given, and that
+// is the thing the colour is here to explain.
 const MEANINGS = {
   good: 'Running normally.',
   info: 'Running. Something worth reading.',

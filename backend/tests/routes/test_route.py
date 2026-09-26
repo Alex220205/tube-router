@@ -1,26 +1,4 @@
-"""
-Tests for POST /route.
-
-WHY THIS EXISTS
-    The engine suite proves the search is correct. These prove the *answer*
-    survives the trip to a client: that the right objective is selected, that
-    names are resolved, and above all that the three ways a journey can fail
-    are distinguishable from one another over HTTP.
-
-    That last one is the whole point. In 2021 unreachability was the literal
-    9999999, compared against inside the Tkinter window at lines 868 and 876.
-    A caller that forgot the check rendered it as a journey time. Here the
-    cases are a 400, a 404 and a 200-with-a-reason, and they mean three
-    different things.
-
-NO 2021 EQUIVALENT
-    There was no endpoint and no wire format. The search wrote into its own
-    attributes and the window read them back off the same object.
-
-CONSTRAINT
-    Needs a real Postgres: the endpoint builds a Network from it. Skips when
-    TEST_DATABASE_URL is unset; CI sets it explicitly.
-"""
+"""Tests for POST /route."""
 
 import os
 
@@ -96,9 +74,9 @@ async def test_a_route_comes_back_with_named_stations(
     api: AsyncClient, db: AsyncSession
 ) -> None:
     """A route comes back with named stations."""
-    # The engine speaks NaPTAN ids because it must not care what anything is
-    # called. A client needs "Green Park", and resolving that is the route
-    # module's job - so it is asserted here rather than assumed.
+    # The engine speaks NaPTAN ids because it must not care what anything is called. A
+    # client needs "Green Park", and resolving that is the route module's job - so it is
+    # asserted here rather than assumed.
     await seed_two_line_network(db)
 
     body = await plan(api)
@@ -116,9 +94,9 @@ async def test_the_three_objectives_return_genuinely_different_answers(
     api: AsyncClient, db: AsyncSession
 ) -> None:
     """The three objectives return genuinely different answers."""
-    # The test that proves the objective is actually being passed through. If
-    # the endpoint ignored it and always asked for the fastest, every other
-    # test in this file would still pass.
+    # The test that proves the objective is actually being passed through. If the
+    # endpoint ignored it and always asked for the fastest, every other test in this
+    # file would still pass.
     await seed_two_line_network(db)
 
     fastest = await plan(api, objective="fastest")
@@ -137,7 +115,6 @@ async def test_avoiding_a_line_changes_the_answer(
     api: AsyncClient, db: AsyncSession
 ) -> None:
     """Avoiding a line changes the answer."""
-    # The mechanism Phase 7 routes around suspended lines with.
     await seed_two_line_network(db)
 
     body = await plan(api, avoid_lines=["blue"])
@@ -149,12 +126,10 @@ async def test_avoiding_a_line_changes_the_answer(
 
 # The one that matters.
 #
-# ORPHAN exists and has no track. That is a successful answer to a
-# well-formed question, so it is a 200 carrying a reason - not a 404, which
-# would tell the client its request was wrong, and not a 500, which would
-# claim the service is broken while it is working correctly.
-#
-# It is also the case 2021 signalled with 9999999.
+# ORPHAN exists and has no track. That is a successful answer to a well-formed question,
+# so it is a 200 carrying a reason - not a 404, which would tell the client its request
+# was wrong, and not a 500, which would claim the service is broken while it is working
+# correctly.
 async def test_two_real_stations_with_no_route_is_a_200_with_a_reason(
     api: AsyncClient, db: AsyncSession
 ) -> None:
@@ -174,8 +149,8 @@ async def test_an_unknown_station_is_a_404_naming_which_one(
     api: AsyncClient, db: AsyncSession
 ) -> None:
     """An unknown station is a 404 naming which one."""
-    # "One of your stations does not exist" is not a useful thing to tell
-    # someone, and it is the easy version to write.
+    # "One of your stations does not exist" is not a useful thing to tell someone, and
+    # it is the easy version to write.
     await seed_two_line_network(db)
 
     missing_origin = await api.post(
@@ -195,9 +170,9 @@ async def test_an_unknown_objective_is_a_400_listing_the_real_ones(
     api: AsyncClient, db: AsyncSession
 ) -> None:
     """An unknown objective is a 400 listing the real ones."""
-    # A malformed request rather than a missing resource, and the guard runs
-    # before the network is built because no graph is needed to know that
-    # "quickest" is not an objective.
+    # A malformed request rather than a missing resource, and the guard runs before the
+    # network is built because no graph is needed to know that "quickest" is not an
+    # objective.
     await seed_two_line_network(db)
 
     response = await api.post(
@@ -214,8 +189,8 @@ async def test_a_missing_field_is_a_422_from_the_schema(
     api: AsyncClient, db: AsyncSession
 ) -> None:
     """A missing field is a 422 from the schema."""
-    # Pydantic's job, asserted so that loosening the schema is a failing test
-    # rather than a silently accepted empty origin.
+    # Pydantic's job, asserted so that loosening the schema is a failing test rather
+    # than a silently accepted empty origin.
     await seed_two_line_network(db)
 
     assert (await api.post("/route", json={"origin": "A"})).status_code == 422
@@ -228,8 +203,6 @@ async def test_origin_equal_to_destination_is_an_empty_route_not_an_error(
     api: AsyncClient, db: AsyncSession
 ) -> None:
     """Origin equal to destination is an empty route, not an error."""
-    # "You are already there" - the same reasoning that made an empty station
-    # search a 200 in Phase 3.
     await seed_two_line_network(db)
 
     body = await plan(api, destination="A")
@@ -256,11 +229,9 @@ def status_of(*entries: tuple[str, int, str, bool]) -> dict:
     }
 
 
-# Patches status_poller.current rather than cache.read_json. The cache
-# module is shared - graph_loader reads the network rows through the same
-# function - so patching it globally hands the loader a status payload and
-# it fails with KeyError: 'stations'. Patching the seam the route actually
-# uses leaves the loader alone and still exercises not_running_lines.
+# Patches status_poller.current rather than cache.read_json. The cache module is shared
+# - graph_loader reads the network rows through the same function - so patching it
+# globally hands the loader a status payload and it fails with KeyError: 'stations'.
 async def suspend(monkeypatch: pytest.MonkeyPatch, *lines: str) -> None:
     """Make the last known status report these lines as not running."""
 
@@ -271,13 +242,13 @@ async def suspend(monkeypatch: pytest.MonkeyPatch, *lines: str) -> None:
     monkeypatch.setattr(status_poller, "current", fake)
 
 
-# Fastest is 80 seconds via red then blue. Suspend the blue line and the
-# only remaining way to C is the 300-second green one. Nothing about the
-# request changes - the answer changes because the network did.
+# Fastest is 80 seconds via red then blue. Suspend the blue line and the only remaining
+# way to C is the 300-second green one. Nothing about the request changes - the answer
+# changes because the network did.
 async def test_a_suspended_line_changes_the_route(
     api: AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The headline test of Phase 7."""
+    """A suspended line changes the route."""
     await seed_two_line_network(db)
     before = await plan(api)
     assert before["total_seconds"] == 80
@@ -294,9 +265,7 @@ async def test_the_answer_says_which_line_it_avoided(
     api: AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The answer says which line it avoided."""
-    # A journey that silently takes a strange path is indistinguishable from a
-    # bug. A user who cannot see why has been given an answer they cannot
-    # check, which is the 9999999 problem wearing better clothes.
+    # A journey that silently takes a strange path is indistinguishable from a bug.
     await seed_two_line_network(db)
     await suspend(monkeypatch, "blue")
 
@@ -308,10 +277,9 @@ async def test_the_answer_says_which_line_it_avoided(
     assert (await plan(api))["avoided_for_disruption"] == []
 
 
-# Severe Delays is the severity it is most tempting to avoid. Doing so would
-# reroute every Piccadilly journey in London over a condition that is often
-# gone within the hour, and the user would never know why their trip got
-# longer.
+# Severe Delays is the severity it is most tempting to avoid. Doing so would reroute
+# every Piccadilly journey in London over a condition that is often gone within the
+# hour, and the user would never know why their trip got longer.
 async def test_a_delay_does_not_change_the_route(
     api: AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -334,9 +302,9 @@ async def test_a_suspension_that_cuts_the_destination_off_is_not_a_500(
     api: AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A suspension that cuts the destination off is not a 500."""
-    # Suspend both ways to C and there is no journey at all. That is still a
-    # well-formed question with a negative answer, and the avoided list is
-    # what separates "nowhere to go" from "nowhere to go while these are shut".
+    # Suspend both ways to C and there is no journey at all. That is still a well-formed
+    # question with a negative answer, and the avoided list is what separates "nowhere
+    # to go" from "nowhere to go while these are shut".
     await seed_two_line_network(db)
     await suspend(monkeypatch, "blue", "green")
 
@@ -353,9 +321,9 @@ async def test_an_unknown_status_never_removes_a_line(
     api: AsyncClient, db: AsyncSession
 ) -> None:
     """An unknown status never removes a line."""
-    # conftest points REDIS_URL at a dead port, so this runs with no status at
-    # all - the state for the first minute after every restart. An unknown
-    # status must not refuse a journey that is perfectly possible.
+    # conftest points REDIS_URL at a dead port, so this runs with no status at all - the
+    # state for the first minute after every restart. An unknown status must not refuse
+    # a journey that is perfectly possible.
     await seed_two_line_network(db)
 
     body = await plan(api)

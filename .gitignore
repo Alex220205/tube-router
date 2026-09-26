@@ -29,19 +29,11 @@ npm-debug.log*
 yarn-error.log*
 
 # --- Data --------------------------------------------------------------------
-# The 2021 SQLite database is read by seed.py in Phase 2 but never committed.
+# Local databases are never committed.
 *.db
 *.sqlite
 *.sqlite3
 data/
-
-# --- Reference material ------------------------------------------------------
-# The 2021 project, kept locally to audit against and to seed from in Phase 2.
-# Deliberately not part of this repository. It contains hardcoded API keys -
-# a TfL key and a Google Maps key - and committing it would copy them into
-# this history too, where they would be exposed the moment the repo goes
-# public. Read from, never tracked.
-old_source_code/
 
 # --- Test and build artefacts ------------------------------------------------
 # Nothing here is produced yet. Listed now so the first time a tool writes one
@@ -65,16 +57,3 @@ test-results/
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# --- Project documentation ---------------------------------------------------
-# AUDIT, DECISIONS, COMMENTING, CODE_STYLE, TESTS, ISSUES and the per-phase
-# write-ups are kept locally and deliberately not published. They remain the
-# working record this project is written against - the commenting standard,
-# the decision log and the issue list are all still maintained and still
-# referenced by name from source comments - but they are not part of the
-# repository.
-#
-# They were also removed from the history rather than only untracked, so no
-# earlier commit contains them either. This entry is what stops them coming
-# back the next time someone runs `git add -A`.
-docs/

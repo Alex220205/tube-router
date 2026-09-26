@@ -1,35 +1,4 @@
-"""
-Transforms TfL payloads into rows ready for the database.
-
-WHY THIS EXISTS
-    Every function here is pure: a payload in, plain dataclasses out, no
-    database and no network. That is the whole point of the split from
-    tfl.py - it means the awkward parts of this phase (branch handling, the
-    cumulative timetable arithmetic, the zero-duration floor, TfL's mixed-case
-    booleans) are unit-testable against a saved fixture in milliseconds.
-
-WHAT THE 2021 VERSION DID
-    Where:  database[works].py, Station.TravelTimesForStations and the
-            Add*database methods
-    How:    Data arrived from TfL and went into SQLite in the same function
-            that fetched it, with the SQL inline.
-    Wrong:  There was no point at which a transformed value could be
-            inspected before it was written, so nothing could be checked. The
-            audit found the result: 12 links stored as zero minutes, two
-            Central line branches disconnected from the network, and no
-            coordinates at all. None of it was noticed for five years.
-
-WHAT CHANGED AND WHY
-    Fetching, transforming and writing are three separate steps. This is the
-    middle one and it touches nothing external, so its output can be asserted
-    on directly.
-
-WHAT'S NEW
-    A stated policy for bad data rather than a silent one. Where TfL gives a
-    zero-length gap the duration is floored and *counted*, and the seed
-    reports the count. The 2021 code hid the same class of problem behind a
-    random number in DisplayTravelTime, which is how it survived so long.
-"""
+"""Transforms TfL payloads into rows ready for the database."""
 
 from collections import defaultdict
 from collections.abc import Iterable, Iterator
@@ -38,27 +7,22 @@ from typing import Any
 
 from .line_colours import LINE_COLOURS, UNKNOWN_LINE_COLOUR
 
-# TfL's timetables are in whole minutes, so two adjacent stations can report
-# the same cumulative arrival and the difference is zero. CHECK (seconds > 0)
-# rejects that, correctly - a free hop is exactly the defect the audit found
-# twelve of. One minute is the smallest honest value the source can express.
+# TfL's timetables are in whole minutes, so two adjacent stations can report the same
+# arrival and a gap of zero. The schema rejects a zero-second hop, rightly, so one
+# minute is the smallest honest value the source can express.
 MIN_SEGMENT_SECONDS = 60
 
-# Used for a segment TfL gives no timetable for at all. Happens on branches
-# whose timetable endpoint returns nothing for the direction requested.
+# Used for a segment TfL gives no timetable for at all. Happens on branches whose
+# timetable endpoint returns nothing for the direction requested.
 DEFAULT_SEGMENT_SECONDS = 120
 
-# StepFreeIntechangeInfo.csv covers about 114 platform pairs network-wide, so
-# most interchanges have no measured distance. Three minutes is TfL's own
-# rule-of-thumb minimum for an interchange in journey planning, and it is
-# deliberately not generous: a value that is too low makes the router prefer
-# changing, which is the error a user notices immediately and complains about,
-# rather than one that quietly degrades the answer.
+# StepFreeIntechangeInfo.csv covers about 114 platform pairs network-wide, so most
+# interchanges have no measured distance.
 DEFAULT_INTERCHANGE_SECONDS = 180
 
-# Metres per second. Ordinary walking pace is about 1.4; 1.2 allows for
-# stairs, crowds and the fact that these distances are measured along
-# corridors rather than as the crow flies.
+# Metres per second. Ordinary walking pace is about 1.4; 1.2 allows for stairs, crowds
+# and the fact that these distances are measured along corridors rather than as the crow
+# flies.
 WALKING_SPEED_M_PER_S = 1.2
 
 # No interchange is instant, whatever the measured distance says.
@@ -126,14 +90,11 @@ class InterchangeRow:
 # --- booleans ----------------------------------------------------------------
 
 
-# The CSVs are inconsistent: DesignatedLevelAccessPoint holds both 'TRUE'
-# and 'False', and HasStepFreeRouteInformation has rows reading 'FALSE '
-# with a trailing space. Comparing to "TRUE" directly would silently read
-# some true values as false, which for step-free access means telling a
-# wheelchair user a station is inaccessible when it is not.
-#
-# True only for an affirmative value. Anything unrecognised is False:
-# absence of evidence is not step-free.
+# The CSVs are inconsistent: DesignatedLevelAccessPoint holds both 'TRUE' and 'False',
+# and HasStepFreeRouteInformation has rows reading 'FALSE ' with a trailing space.
+# Comparing to "TRUE" directly would silently read some true values as false, which for
+# step-free access means telling a wheelchair user a station is inaccessible when it is
+# not.
 def parse_bool(value: str | None) -> bool:
     """Read one of TfL's booleans."""
     if value is None:
@@ -144,8 +105,8 @@ def parse_bool(value: str | None) -> bool:
 # --- lines -------------------------------------------------------------------
 
 
-# One row per line, ordered by code so a re-run produces the same
-# insertion order and diffs of seed output stay readable.
+# One row per line, ordered by code so a re-run produces the same insertion order and
+# diffs of seed output stay readable.
 def lines_from_payload(payload: list[dict[str, Any]]) -> list[LineRow]:
     """Turn /Line/Mode/tube into line rows."""
     rows = [
@@ -162,14 +123,8 @@ def lines_from_payload(payload: list[dict[str, Any]]) -> list[LineRow]:
 # --- stations and complexes --------------------------------------------------
 
 
-# A station on three lines appears in three responses. The 2021 database
-# kept all three as separate rows - 486 rows for 346 stations - which is
-# why its graph builder had to deduplicate by name string on every search.
-# Here NaPTAN is the identity and the duplicates collapse.
-#
-# ValueError: If a stop point has no coordinates. stations.location is
-#     NOT NULL and a station the map cannot draw is not usable, so this
-#     fails the seed rather than writing a hole.
+# A station on three lines appears in three responses. NaPTAN id is the identity,
+# so the duplicates collapse into one row.
 def stations_from_stop_points(
     stop_points_by_line: dict[str, list[dict[str, Any]]],
 ) -> list[StationRow]:
@@ -187,20 +142,18 @@ def stations_from_stop_points(
                 )
             seen[naptan] = StationRow(
                 naptan_id=naptan,
-                # commonName verbatim, suffix included. See docs/DECISIONS.md
-                # on why nothing here corrects a spelling.
                 name=stop["commonName"],
                 lat=float(lat),
                 lon=float(lon),
-                # Empty string means "no hub", which is not the same as a hub
-                # called "". Normalised to None so the column is honest.
+                # Empty string means "no hub", which is not the same as a hub called "".
+                # Normalised to None so the column is honest.
                 hub_id=(stop.get("hubNaptanCode") or None),
             )
     return [seen[key] for key in sorted(seen)]
 
 
-# Bank and Monument share HUBBAN. Naming the complex after its members
-# rather than inventing a label keeps it checkable against TfL.
+# Bank and Monument share HUBBAN. Naming the complex after its members rather than
+# inventing a label keeps it checkable against TfL.
 def complexes_from_stations(stations: list[StationRow]) -> list[ComplexRow]:
     """Derive station complexes from TfL's hub codes."""
     members: dict[str, list[str]] = defaultdict(list)
@@ -214,8 +167,8 @@ def complexes_from_stations(stations: list[StationRow]) -> list[ComplexRow]:
     ]
 
 
-# Used only to build a readable complex name. It never touches
-# stations.name, which stays exactly as TfL gave it.
+# Used only to build a readable complex name. It never touches stations.name, which
+# stays exactly as TfL gave it.
 def _short_name(name: str) -> str:
     """Drop the station-type suffix for display inside a complex name."""
     for suffix in (" Underground Station", " Rail Station", " DLR Station", " Station"):
@@ -227,22 +180,9 @@ def _short_name(name: str) -> str:
 # --- station/line membership and step-free access ----------------------------
 
 
-# This is the only place TfL publishes accessibility at that grain, and it
-# is why step_free_to_platform lives on station_lines rather than on
-# stations: Green Park is step-free on the Victoria line and Pimlico is
-# not, on the same line.
-#
-# A station counts as step-free for a line if *any* of its platforms on
-# that line is accessible. One accessible platform is what makes the
-# journey possible.
-#
-# Two columns count, not one. DesignatedLevelAccessPoint marks a permanent
-# level boarding point; LevelAccessByManualRamp marks one where staff
-# deploy a ramp. TfL's own journey planner treats both as step-free, and
-# they are nearly disjoint in the data - reading only the first drops
-# roughly half the accessible platforms in the network and leaves the
-# Central and Bakerloo lines with no step-free stations at all, which is
-# not true of the real railway.
+# This is the only place TfL publishes accessibility at that grain, and it is why
+# step_free_to_platform lives on station_lines rather than on stations: Green Park is
+# step-free on the Victoria line and Pimlico is not, on the same line.
 def step_free_by_station_line(
     platform_services: list[dict[str, str]],
 ) -> dict[tuple[str, str], bool]:
@@ -261,11 +201,9 @@ def step_free_by_station_line(
     return result
 
 
-# TfL nests a line's route three deep: a payload per direction, a sequence
-# per branch within it, and the ordered stops within that. Every caller wants
-# the innermost level, so the walk is written once here.
-#
-# Empty sequences are dropped, because a branch with no stops is not a branch.
+# TfL nests a line's route three deep: a payload per direction, a sequence per branch
+# within it, and the ordered stops within that. Every caller wants the innermost level,
+# so the walk is written once here.
 def stop_sequences(
     payloads: Iterable[dict[str, Any]],
 ) -> Iterator[list[dict[str, Any]]]:
@@ -277,9 +215,8 @@ def stop_sequences(
                 yield stops
 
 
-# Derived from the route sequences rather than from /StopPoints, because a
-# sequence is the definitive statement that a line actually runs through a
-# station.
+# Derived from the route sequences rather than from /StopPoints, because a sequence is
+# the definitive statement that a line actually runs through a station.
 def station_lines_from_sequences(
     sequences_by_line: dict[str, list[dict[str, Any]]],
     step_free: dict[tuple[str, str], bool],
@@ -304,11 +241,10 @@ def station_lines_from_sequences(
 # --- segments ----------------------------------------------------------------
 
 
-# timeToArrival is cumulative minutes from the origin, so the time between
-# two adjacent stations is the difference between consecutive values. The
-# first entry is measured from the origin the timetable was requested for,
-# which is why that has to be passed in - it does not appear in the
-# intervals.
+# timeToArrival is cumulative minutes from the origin, so the time between two adjacent
+# stations is the difference between consecutive values. The first entry is measured
+# from the origin the timetable was requested for, which is why that has to be passed in
+# - it does not appear in the intervals.
 def _gaps_between(
     interval_set: dict[str, Any], origin_naptan: str
 ) -> dict[tuple[str, str], int]:
@@ -329,8 +265,8 @@ def _gaps_between(
     return gaps
 
 
-# (origin, destination) to seconds. Empty if the payload has no
-# timetable, which TfL returns for some branch/direction combinations.
+# (origin, destination) to seconds. Empty if the payload has no timetable, which TfL
+# returns for some branch/direction combinations.
 def durations_from_timetable(
     payload: dict[str, Any], origin_naptan: str
 ) -> dict[tuple[str, str], int]:
@@ -345,15 +281,6 @@ def durations_from_timetable(
     return durations
 
 
-# Consecutive stops *within one stopPointSequence* are adjacent. Stops in
-# different sequences are on different branches and are not adjacent -
-# joining across them would invent track that does not exist, which is the
-# mirror image of the 2021 problem where real track was missing and two
-# Central line branches ended up unreachable.
-#
-# The segment rows, and the number whose duration had to be floored or
-# defaulted. The count is returned rather than logged so the caller can
-# report it - a silent floor is how the 2021 zeroes survived.
 def segments_from_sequences(
     line_code: str,
     payloads: list[dict[str, Any]],
@@ -367,8 +294,8 @@ def segments_from_sequences(
         ids = [stop["id"] for stop in stops]
         for origin, destination in zip(ids, ids[1:], strict=False):
             if origin == destination:
-                # TfL occasionally repeats a stop at a branch join. A
-                # self-loop is rejected by the schema and means nothing.
+                # TfL occasionally repeats a stop at a branch join. A self-loop is
+                # rejected by the schema and means nothing.
                 continue
 
             seconds = durations.get((origin, destination))
@@ -392,9 +319,6 @@ def segments_from_sequences(
 # --- interchanges ------------------------------------------------------------
 
 
-# TfL formats these as {station}-Plat{NN}-{DIRECTION}-{line}, where the
-# line itself may contain hyphens ("hammersmith-city") or be several lines
-# separated by pipes ("london-overground|national-rail").
 def parse_platform_id(platform_id: str) -> tuple[str, list[str]] | None:
     """Pull the station and its lines out of a platform identifier."""
     station, separator, remainder = platform_id.partition("-Plat")
@@ -406,9 +330,8 @@ def parse_platform_id(platform_id: str) -> tuple[str, list[str]] | None:
     return station, [code for code in parts[2].split("|") if code]
 
 
-# A platform id can name several lines, separated by pipes, so one measured
-# walk becomes a pair for each line at each end. The same line at both ends
-# is not a change.
+# A platform id can name several lines, separated by pipes, so one measured walk becomes
+# a pair for each line at each end. The same line at both ends is not a change.
 def _different_lines(
     from_lines: list[str], to_lines: list[str]
 ) -> Iterator[tuple[str, str]]:
@@ -419,9 +342,9 @@ def _different_lines(
                 yield from_line, to_line
 
 
-# (station, from line, to line) to distance in metres. Where a platform
-# serves several lines the distance applies to each pairing. Sparse:
-# about 114 rows cover the whole network.
+# (station, from line, to line) to distance in metres. Where a platform serves several
+# lines the distance applies to each pairing. Sparse: about 114 rows cover the whole
+# network.
 def interchange_distances(
     rows: list[dict[str, str]],
 ) -> dict[tuple[str, str, str], int]:
@@ -436,33 +359,19 @@ def interchange_distances(
         station, from_lines = source
         to_station, to_lines = target
         if station != to_station:
-            # A walk between two different stations is not an interchange in
-            # this model; that is what a station complex represents.
+            # A walk between two different stations is not an interchange in this model;
+            # that is what a station complex represents.
             continue
         for from_line, to_line in _different_lines(from_lines, to_lines):
             distances[(station, from_line, to_line)] = int(raw)
     return distances
 
 
-# TfL publishes the same corridor whole and in halves. At Green Park the
-# direct jubilee-to-victoria walk is 380 m, and jubilee to piccadilly to
-# victoria is 220 + 160 - the same 380 m. Converting each to whole seconds
-# independently gives 317 for the direct walk and 183 + 133 = 316 for the
-# decomposed one, so the router could save a second by walking through a
-# platform it never boards. Sum-of-rounded against rounded-of-sum.
-#
-# Taking the shortest walk over every platform at the station removes that:
-# a chained walk can never be strictly cheaper than the direct one, so the
-# search has no arbitrage to find. Where the two tie, the (seconds, changes)
-# ordering in the engine already prefers the single change.
-#
-# Floyd-Warshall, over at most five or six lines per station. The three loops
-# and the guard stay together, four levels deep, because that is the shape the
-# algorithm is recognised by. Spread across helpers it would no longer read as
-# Floyd-Warshall.
-#
-# Ordered line pair to seconds. Directional throughout - the walk one
-# way is not the walk back.
+# TfL publishes the same corridor whole and in halves. At Green Park the direct
+# jubilee-to-victoria walk is 380 m, and jubilee to piccadilly to victoria is
+# 220 + 160, the same 380 m. Rounded to whole seconds separately, the halves come to a
+# second less than the whole, so the router could save a second by walking through a
+# platform it never boards. The shortest walk over every platform removes that.
 def _shortest_walks(
     naptan: str,
     codes: list[str],
@@ -507,21 +416,9 @@ def _changes_at(
                 yield source, target
 
 
-# Two sources, and the order matters. A measured distance in
-# StepFreeIntechangeInfo.csv is TfL stating the change is step-free, and it is
-# authoritative where it exists - but it covers only a few hundred pairs
-# network-wide.
-#
-# Otherwise it is inferred: both platforms being step-free means the change
-# can normally be made via the lifts, which is the standard assumption in
-# accessible journey planning. It is an inference rather than a fact, and it
-# can be wrong where two accessible platforms are joined only by stairs.
-#
-# Requiring the measurement instead is the safer reading and was the original
-# rule. It marked 6 of 312 changes step-free, which left the step-free network
-# in 40-odd disconnected fragments and made the objective answer "no route"
-# for essentially every real journey. A feature that always refuses is not a
-# cautious feature, it is an absent one.
+# Two sources, and the order matters. A measured distance in StepFreeIntechangeInfo.csv
+# is TfL stating the change is step-free, and it is authoritative where it exists - but
+# it covers only a few hundred pairs network-wide.
 def _step_free_change(
     measured: bool, source: StationLineRow, target: StationLineRow
 ) -> bool:
@@ -529,11 +426,10 @@ def _step_free_change(
     return measured or (source.step_free_to_platform and target.step_free_to_platform)
 
 
-# The pairs are derived - if two lines call at a station you can change
-# between them - but the *cost* is not, which is why these are stored rows
-# rather than something computed at query time. A measured distance is used
-# where TfL has one; everything else gets a stated default rather than a
-# number that looks calculated but is not.
+# The pairs are derived - if two lines call at a station you can change between them -
+# but the *cost* is not, which is why these are stored rows rather than something
+# computed at query time. A measured distance is used where TfL has one; everything else
+# gets a stated default rather than a number that looks calculated but is not.
 def interchanges_from_station_lines(
     station_lines: list[StationLineRow],
     distances: dict[tuple[str, str, str], int],

@@ -1,48 +1,4 @@
-"""
-GET /places/{naptan_id} and GET /places/{naptan_id}/streetview.
-
-WHY THIS EXISTS
-    A journey planner that stops at the station has answered a narrower
-    question than the one people have. This is the other end of it: you have
-    arrived, what is here.
-
-    It is also the only endpoint in this service that costs money per call,
-    which is why the guard clauses here, and the cache behind them in
-    services/lookups.py, are the interesting parts rather than the query.
-
-WHAT THE 2021 VERSION DID
-    Where:  database[works].py, lines 239 and 276
-    How:    Built a Places URL inline with the key as a literal and called it
-            from the GUI thread, twice, in two places.
-    Wrong:  The key was in the source and therefore in every commit; there
-            was no timeout, so a slow Google froze the window; and there was
-            no boundary, so the raw response was rendered directly.
-
-WHAT CHANGED AND WHY
-    The browser sends a NaPTAN id and nothing else. The coordinates come out
-    of Postgres here, which means the browser cannot ask Google about
-    somewhere that is not a Tube station, and this endpoint cannot be turned
-    into an open proxy for arbitrary lookups by anyone who finds it.
-
-    The key stays on this side entirely, the image included. What the page
-    gets is a URL on our own host.
-
-WHAT'S NEW
-    `available`, and the three empty answers it separates.
-
-    No key, Google unreachable, and a station with genuinely nothing near it
-    all produce an empty list, and they are not the same statement. The first
-    two mean "we did not look"; the third means "we looked". A client that
-    cannot tell them apart either shows an error because a credential is
-    missing, or tells someone that central London has no restaurants.
-
-    This is the opposite of what routes/status.py does, where an unknown
-    state must never be rendered as good service, and the two are
-    reconcilable: a wrong line status sends someone to a platform with no
-    trains, and a wrong restaurant list costs nothing. The rule is not
-    "always report uncertainty loudly", it is "never let a guess look like an
-    answer" - here the honest move is to say nothing at all.
-"""
+"""GET /places/{naptan_id} and GET /places/{naptan_id}/streetview."""
 
 from typing import Annotated
 
@@ -60,18 +16,8 @@ from app.services.places import KINDS, PlacesError
 router = APIRouter(prefix="/places", tags=["places"])
 
 
-# naptan_id: TfL's station id, e.g. 940GZZLUHR5.
-# session: Injected per request.
-# settings: Injected per request.
-# kind: Category - food, coffee, pubs, museums or see. Validated
-#     against the allow list before anything is spent, and expanded to
-#     several Google place types here rather than in the browser.
-#
-# Up to eight places, nearest first, with `available` saying whether we
-# were able to look at all.
-#
-# HTTPException: 400 for an unknown kind, 404 for an unknown station,
-#     503 if the database is unreachable.
+# Up to eight places, nearest first, with `available` saying whether we were able to
+# look at all.
 @router.get(
     "/{naptan_id}",
     response_model=PlacesResponse,
@@ -85,9 +31,9 @@ async def places_near(
 ) -> PlacesResponse:
     """What is near a station."""
     try:
-        # Guard clauses before the database, and the database before Google.
-        # Each step is more expensive than the one above it, and the last one
-        # is the only one with a price.
+        # Guard clauses before the database, and the database before Google. Each step
+        # is more expensive than the one above it, and the last one is the only one with
+        # a price.
         if kind not in KINDS:
             raise HTTPException(
                 status_code=400,
@@ -110,13 +56,10 @@ async def places_near(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-# 404 rather than an empty 200, because unlike the list above there is no
-# useful "we looked and found nothing" image to send. The page treats a
-# failed image the way any page treats one: it shows nothing. The `<img>`
-# never reaches the user's eye and nothing has to be explained.
-#
-# HTTPException: 404 for an unknown station and for a station Google
-#     has no imagery for, 503 if the database is unreachable.
+# 404 rather than an empty 200, because unlike the list above there is no useful "we
+# looked and found nothing" image to send. The page treats a failed image the way any
+# page treats one: it shows nothing. The `<img>` never reaches the user's eye and
+# nothing has to be explained.
 @router.get(
     "/{naptan_id}/streetview",
     responses={
@@ -144,8 +87,8 @@ async def street_view(
             ) from exc
 
         if image is None:
-            # No panorama there. Ordinary, and not a failure: plenty of
-            # station entrances have never been driven past.
+            # No panorama there. Ordinary, and not a failure: plenty of station
+            # entrances have never been driven past.
             raise HTTPException(status_code=404, detail="No imagery for this station")
 
         return _jpeg(image)
@@ -160,9 +103,9 @@ async def street_view(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-# A station entrance does not move, so the browser may hold it as long as
-# Redis does. Without this the image is re-fetched from us on every open,
-# which costs nothing in money and everything in feeling slow.
+# A station entrance does not move, so the browser may hold it as long as Redis does.
+# Without this the image is re-fetched from us on every open, which costs nothing in
+# money and everything in feeling slow.
 def _jpeg(image: bytes) -> Response:
     """The image, with a cache header matching how long we keep it ourselves."""
     return Response(

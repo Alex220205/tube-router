@@ -1,38 +1,4 @@
-"""
-The wire format for what is near a station.
-
-WHY THIS EXISTS
-    Same reason schemas/route.py exists: what Google returns and what this
-    service promises are two different things, and the boundary is where the
-    promise gets written down. Google's Nearby Search answers with nested
-    objects, localised display names and a field set that changes with the
-    field mask; the page wants a flat row with a name on it.
-
-    It also keeps the field mask honest. Every field below corresponds to one
-    path asked for in services/places.py, and Google bills by field, so a
-    field here with no reader is money spent on nothing.
-
-NO 2021 EQUIVALENT
-    The old project called Places and rendered the result straight into a
-    Tkinter label from inside the GUI thread. There was no boundary, no
-    schema and nothing that could be tested without a network and a key.
-
-WHAT'S NEW
-    `available`, which is the whole reason this file is not just a list.
-
-    Three different situations produce an empty list and they must not look
-    the same: no key configured, Google unreachable, and a station with
-    genuinely nothing near it. The first two are "we cannot answer" and the
-    third is an answer. A client that cannot tell them apart either renders
-    an error over a missing credential or claims central London has no
-    restaurants.
-
-    This is deliberately the opposite call from schemas/status.py, where an
-    unknown state must never render as good service. The difference is what
-    a wrong reading costs: a missing line status can send someone to a
-    platform with no trains, and a missing restaurant list cannot mislead
-    anyone about anything.
-"""
+"""The wire format for what is near a station."""
 
 from pydantic import BaseModel, Field
 

@@ -1,32 +1,4 @@
-"""
-The wire format for live line status.
-
-WHY THIS EXISTS
-    Same reason schemas/route.py exists: what the poller stores and what a
-    client receives are allowed to diverge, and pinning the second one here
-    means a change to the first is a failing test rather than a page that
-    quietly renders nothing.
-
-WHAT THE 2021 VERSION DID
-    Where:  database[works].py, lines.service_status
-    How:    A TEXT column holding "Good Service" or "Severe Delays", read
-            straight out of SQLite and printed into a Tkinter label.
-    Wrong:  There was no format, because there was no boundary - the display
-            read the storage directly. The severity was only ever a sentence,
-            so nothing could ask "is this line actually running", which is why
-            status and the router never met.
-
-WHAT CHANGED AND WHY
-    `severity` is the number, `running` is the verdict derived from it, and
-    both are sent. A client that only wants to colour a line uses one; the
-    router uses the other; neither has to re-derive what the other decided.
-
-WHAT'S NEW
-    `as_of`. The old value had no timestamp and no expiry, so a status shown
-    on screen could be hours old with nothing to say so. Null here means the
-    poller has not run yet, which a page can render honestly as "status
-    unavailable" rather than implying everything is fine.
-"""
+"""The wire format for live line status."""
 
 from pydantic import BaseModel, ConfigDict, Field
 

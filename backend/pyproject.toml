@@ -4,9 +4,6 @@ version = "0.1.0"
 description = "Web service for Tube Router: HTTP, Postgres, Redis. Not the routing logic."
 requires-python = ">=3.12"
 
-# Dependencies get added in the phase that uses them, not in advance. Phase 1
-# brings alembic and geoalchemy2 with the schema; the Redis client arrives in
-# Phase 6 and httpx in Phase 7.
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
@@ -14,16 +11,16 @@ dependencies = [
     "asyncpg>=0.30",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
-    # Schema history in version control. Phase 1.
+    # Schema history in version control.
     "alembic>=1.14",
     # PostGIS column types for SQLAlchemy - geography(Point, 4326) has no
-    # equivalent in core SQLAlchemy. Phase 1.
+    # equivalent in core SQLAlchemy.
     "geoalchemy2>=0.16",
-    # Async HTTP, for talking to TfL. Phase 2 seeds from it; Phase 7 polls it.
+    # Async HTTP, for talking to TfL: the seed reads from it and the poller polls.
     # Async specifically: `requests` would block the event loop for every
     # connected user while waiting on someone else's server.
     "httpx>=0.27",
-    # Caches the built routing graph and, from Phase 7, live line status.
+    # Caches the built routing graph and live line status.
     "redis>=5",
     "tube-engine",
 ]

@@ -1,24 +1,4 @@
-"""
-Shared test fixtures for the backend suite.
-
-WHY THIS EXISTS
-    The endpoint tests need an HTTP client and a database session, and need
-    neither of them to be real. This file provides both, so the suite runs in
-    CI with no Postgres container and no server process.
-
-NO 2021 EQUIVALENT
-    The old project had no tests. That is the central fact this rewrite is
-    responding to: Traversal.Create_graph opened a database cursor inside the
-    graph builder, so routing could not be exercised without a live SQLite
-    file, so it never was, so the aliasing bug at line 532 survived five
-    years.
-
-WHAT'S NEW
-    Dependency overrides. FastAPI resolves get_db through its injection
-    system, which means a test can substitute a stand-in without the endpoint
-    knowing. That is the practical payoff of injecting the session rather
-    than importing it: the thing the test wants to control is already a seam.
-"""
+"""Shared test fixtures for the backend suite."""
 
 import os
 from pathlib import Path
@@ -28,46 +8,31 @@ from dotenv import load_dotenv
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parent
 
-# `cp .env.example .env` is the documented setup, so the test suite reads the
-# same file rather than asking for a second, separate export. load_dotenv does
-# not overwrite variables already in the environment, so CI - which sets them
-# directly - still wins.
+# `cp .env.example .env` is the documented setup, so the test suite reads the same file
+# rather than asking for a second, separate export. load_dotenv does not overwrite
+# variables already in the environment, so CI - which sets them directly - still wins.
 load_dotenv(REPO_ROOT / ".env")
 
-# Where the schema tests point. Unset means they skip, so the suite still runs
-# with nothing running. See .env.example.
+# Where the schema tests point. Unset means they skip, so the suite still runs with
+# nothing running. See .env.example.
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 
-# Set before importing the application: database.py builds the engine at
-# import time, which requires DATABASE_URL to exist.
-#
-# When TEST_DATABASE_URL is set it becomes DATABASE_URL, overriding whatever
-# .env said. That keeps the Phase 1 non-negotiable intact: Alembic reads its
-# URL from app.core.config, so pointing the application at the test database is
-# what points the migrations at it too, and there is still exactly one source
-# of connection settings. The override has to be unconditional - .env sets
-# DATABASE_URL to the compose hostname `db`, which does not resolve from here.
+# Set before importing the application: database.py builds the engine at import time,
+# which requires DATABASE_URL to exist.
 if TEST_DATABASE_URL:
     os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 else:
-    # A URL that parses and is never dialled: every endpoint test overrides
-    # the session dependency.
+    # A URL that parses and is never dialled: every endpoint test overrides the session
+    # dependency.
     os.environ.setdefault(
         "DATABASE_URL", "postgresql+asyncpg://test:test@localhost:5432/test"
     )
 
 os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
 
-# Point the cache at a port nothing listens on. Unconditional, for the same
-# reason DATABASE_URL is: .env names the compose hostname `redis`, which does
-# not resolve from here, and a failed DNS lookup is not covered by the client's
-# socket timeout - it took about two seconds per call, which made the endpoint
-# suite nearly three times slower. localhost refuses instantly.
-#
-# So the suite runs entirely on the cache-miss path, which is the right
-# default: it proves every endpoint answers identically with Redis absent,
-# and that is the property core/cache.py's swallowed exceptions exist to buy.
-# The cache's own behaviour is tested directly in tests/core/test_cache.py.
+# Point the cache at a port nothing listens on. .env names the compose hostname
+# `redis`, which does not resolve outside Docker, and a failed DNS lookup is not
+# covered by the socket timeout; localhost refuses instantly.
 os.environ["REDIS_URL"] = "redis://127.0.0.1:1/0"
 
 from collections.abc import AsyncIterator, Iterator  # noqa: E402
@@ -93,8 +58,6 @@ class FakeSession:
         """Behave as a database that does or does not answer."""
         self.reachable = reachable
 
-    # OperationalError: when this session was built unreachable, which
-    #     is what SQLAlchemy raises for a connection that is refused.
     async def execute(self, statement: Any) -> None:
         """Pretend to run a statement."""
         if not self.reachable:
@@ -109,8 +72,8 @@ def _client_with(*, reachable: bool) -> AsyncClient:
         yield FakeSession(reachable=reachable)
 
     app.dependency_overrides[get_db] = override_get_db
-    # ASGITransport drives the app in-process. No socket, no uvicorn, no port
-    # to collide with a stack that happens to be running.
+    # ASGITransport drives the app in-process. No socket, no uvicorn, no port to collide
+    # with a stack that happens to be running.
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
@@ -133,8 +96,8 @@ async def client_db_down() -> AsyncIterator[AsyncClient]:
 # --- Schema tests: a real database ------------------------------------------
 
 
-# Synchronous on purpose. Alembic's env.py calls asyncio.run(), which fails
-# if there is already a running loop - so this must not be an async fixture.
+# Synchronous on purpose. Alembic's env.py calls asyncio.run(), which fails if there is
+# already a running loop - so this must not be an async fixture.
 @pytest.fixture(scope="session")
 def migrated_database() -> Iterator[str]:
     """Bring the test database up to head, once per session."""
@@ -147,18 +110,13 @@ def migrated_database() -> Iterator[str]:
 
     yield TEST_DATABASE_URL
 
-    # The schema is left in place. Re-running upgrade on the next session is a
-    # no-op, and CI gets a fresh container every time regardless.
+    # The schema is left in place. Re-running upgrade on the next session is a no-op,
+    # and CI gets a fresh container every time regardless.
 
 
-# get_network caches the built Network for the life of the process, which
-# is right in production and wrong here: each test rolls its database back
-# and seeds its own, so the second test to call /route would be answered
-# from the first test's graph.
-#
-# Autouse and unconditional. It costs nothing when no test builds one, and
-# the failure it prevents is the confusing kind - a passing suite whose
-# tests only pass in the order they happen to run.
+# get_network caches the built Network for the life of the process, which is right in
+# production and wrong here: each test rolls its database back and seeds its own, so the
+# second test to call /route would be answered from the first test's graph.
 @pytest.fixture(autouse=True)
 def fresh_network() -> Iterator[None]:
     """Drop the process-wide routing graph around every test."""
@@ -167,11 +125,10 @@ def fresh_network() -> Iterator[None]:
     graph_loader.forget()
 
 
-# get_db is overridden to hand back the *same* session the test is using,
-# so rows a test flushes are visible to the endpoint it then calls, and the
-# whole lot is rolled back afterwards. Without this the endpoint would open
-# its own session, see an empty database, and every test would have to
-# commit - leaving debris behind.
+# get_db is overridden to hand back the *same* session the test is using, so rows a test
+# flushes are visible to the endpoint it then calls, and the whole lot is rolled back
+# afterwards. Without this the endpoint would open its own session, see an empty
+# database, and every test would have to commit - leaving debris behind.
 @pytest.fixture
 async def api(db: AsyncSession) -> AsyncIterator[AsyncClient]:
     """An HTTP client whose endpoints share the test's own transaction."""
@@ -188,11 +145,11 @@ async def api(db: AsyncSession) -> AsyncIterator[AsyncClient]:
     app.dependency_overrides.clear()
 
 
-# The session runs inside a transaction that is always rolled back, so a
-# test can insert whatever it likes - including rows that violate a
-# constraint - without leaking into the next one. That matters more than
-# usual here: several tests deliberately abort their transaction, and
-# without the rollback the database would carry that state forward.
+# The session runs inside a transaction that is always rolled back, so a test can insert
+# whatever it likes - including rows that violate a constraint - without leaking into
+# the next one. That matters more than usual here: several tests deliberately abort
+# their transaction, and without the rollback the database would carry that state
+# forward.
 @pytest.fixture
 async def db(migrated_database: str) -> AsyncIterator[AsyncSession]:
     """A session whose work is discarded when the test ends."""
@@ -202,13 +159,9 @@ async def db(migrated_database: str) -> AsyncIterator[AsyncSession]:
         session = AsyncSession(
             bind=connection,
             expire_on_commit=False,
-            # The session runs inside a SAVEPOINT rather than directly on the
-            # outer transaction. It matters because most of these tests
-            # deliberately provoke an IntegrityError: without this, the
-            # session's own rollback tears down the transaction this fixture
-            # is still holding, and the cleanup below then rolls back
-            # something already gone - which SQLAlchemy warns about, on every
-            # such test. A warning that is always present is one nobody reads.
+            # A SAVEPOINT, because many of these tests provoke an IntegrityError on
+            # purpose, and the session's own rollback would otherwise tear down the
+            # transaction this fixture still holds.
             join_transaction_mode="create_savepoint",
         )
         try:

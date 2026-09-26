@@ -1,20 +1,4 @@
-"""
-Tests for the TfL client.
-
-WHY THIS EXISTS
-    The client is the only part of the seed that can fail for reasons outside
-    this project - a timeout, a 503, a redirect, a body that is not JSON. The
-    interesting behaviour is entirely in how it reacts to those, and none of
-    it is observable by calling the real API and hoping for the best.
-
-    Every test drives an httpx.MockTransport, so the retry and error paths
-    are exercised deterministically and CI never depends on TfL being up. A
-    red build should mean this repository is broken, not that someone else's
-    server is having a bad afternoon.
-
-NO 2021 EQUIVALENT
-    The old project called TfL with no timeout, no retry and no tests.
-"""
+"""Tests for the TfL client."""
 
 import io
 import json
@@ -60,15 +44,14 @@ async def test_tube_lines_returns_every_line() -> None:
 
     ids = {line["id"] for line in lines}
     assert len(lines) == 11
-    # The one the 2021 database was missing entirely.
     assert "waterloo-city" in ids
 
 
 async def test_route_sequence_preserves_station_order() -> None:
     """route_sequence() preserves station order."""
-    # Order is the whole point of this endpoint: consecutive pairs become
-    # segments, so a client that reordered them would silently produce a
-    # network with the wrong adjacency.
+    # Order is the whole point of this endpoint: consecutive pairs become segments, so a
+    # client that reordered them would silently produce a network with the wrong
+    # adjacency.
     payload = fixture("route_sequence_victoria_inbound.json")
 
     async with client_returning(lambda r: httpx.Response(200, json=payload)) as tfl:
@@ -121,9 +104,9 @@ async def test_app_key_is_sent_when_set() -> None:
 
 async def test_app_key_is_omitted_entirely_when_blank() -> None:
     """The app key is omitted entirely when blank."""
-    # Not sent as an empty string: TfL rejects app_key= as a malformed key,
-    # which would break the project for anyone who has not got one - and
-    # every endpoint the seed uses answers fine without.
+    # Not sent as an empty string: TfL rejects app_key= as a malformed key, which would
+    # break the project for anyone who has not got one - and every endpoint the seed
+    # uses answers fine without.
     seen: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -160,8 +143,8 @@ async def test_a_server_error_is_retried_and_then_succeeds() -> None:
 
 async def test_a_client_error_is_not_retried() -> None:
     """A client error is not retried."""
-    # A 404 means the line id is wrong. Retrying is being wrong three times
-    # more slowly, and it triples the load on someone else's server.
+    # A 404 means the line id is wrong. Retrying is being wrong three times more slowly,
+    # and it triples the load on someone else's server.
     attempts = {"n": 0}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -178,11 +161,10 @@ async def test_a_client_error_is_not_retried() -> None:
 
 async def test_rate_limiting_is_retried_even_though_it_is_a_4xx() -> None:
     """Rate limiting is retried even though it is a 4xx."""
-    # The exception to "4xx will not change on a retry". A 429 does not mean
-    # the request was wrong, it means it was too soon - waiting is the entire
-    # fix. This was found by running the real seed: TfL allows 50 requests a
-    # minute without a key and a full run makes about ninety, so it died a
-    # third of the way through on hammersmith-city.
+    # The exception to "4xx will not change on a retry". A 429 does not mean the request
+    # was wrong, it means it was too soon - waiting is the entire fix. This was found by
+    # running the real seed: TfL allows 50 requests a minute without a key and a full
+    # run makes about ninety, so it died a third of the way through on hammersmith-city.
     attempts = {"n": 0}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -201,8 +183,8 @@ async def test_rate_limiting_is_retried_even_though_it_is_a_4xx() -> None:
 
 async def test_retry_after_is_honoured_when_tfl_sends_one() -> None:
     """Retry-After is honoured when TfL sends one."""
-    # Sleeping for our own backoff when the server has said how long to wait
-    # means either waiting too long or being rate limited again immediately.
+    # Sleeping for our own backoff when the server has said how long to wait means
+    # either waiting too long or being rate limited again immediately.
     slept: list[float] = []
 
     async def record(seconds: float) -> None:
@@ -247,8 +229,8 @@ async def test_a_malformed_retry_after_falls_back_to_a_sane_pause() -> None:
 
 async def test_requests_are_spaced_when_an_interval_is_set() -> None:
     """Requests are spaced when an interval is set."""
-    # The throttle is what stops the 429 happening at all. Without it the
-    # retry above is the only thing between the seed and a failed run.
+    # The throttle is what stops the 429 happening at all. Without it the retry above is
+    # the only thing between the seed and a failed run.
     slept: list[float] = []
 
     async def record(seconds: float) -> None:
@@ -271,8 +253,8 @@ async def test_requests_are_spaced_when_an_interval_is_set() -> None:
 
 async def test_no_throttling_by_default() -> None:
     """No throttling by default."""
-    # Tests and any future caller with a key should not pay for a limit they
-    # are not subject to.
+    # Tests and any future caller with a key should not pay for a limit they are not
+    # subject to.
     slept: list[float] = []
 
     async def record(seconds: float) -> None:
@@ -306,9 +288,9 @@ async def test_a_timeout_is_retried_then_raises() -> None:
 async def test_a_non_json_body_is_an_error_not_a_crash() -> None:
     """A non-JSON body is an error, not a crash."""
 
-    # TfL occasionally answers 200 with an HTML error page in front of a
-    # maintenance window. Without this the seed dies on a JSONDecodeError
-    # several frames from the cause.
+    # TfL occasionally answers 200 with an HTML error page in front of a maintenance
+    # window. Without this the seed dies on a JSONDecodeError several frames from the
+    # cause.
     def handler(request: httpx.Request) -> httpx.Response:
         """Answer 200 with an HTML maintenance page."""
         return httpx.Response(200, text="<html>maintenance</html>")
@@ -358,9 +340,9 @@ async def test_station_data_reads_the_two_csvs_it_needs() -> None:
 async def test_station_data_strips_the_byte_order_mark() -> None:
     """station_data() strips the byte order mark."""
     # TfL writes a BOM. Without utf-8-sig the first column name comes back as
-    # "﻿PlatformUniqueId" and every lookup of it returns None - which
-    # presents as missing data rather than as an encoding problem, and is
-    # therefore the kind of bug that gets debugged in the wrong place.
+    # "﻿PlatformUniqueId" and every lookup of it returns None - which presents as
+    # missing data rather than as an encoding problem, and is therefore the kind of bug
+    # that gets debugged in the wrong place.
     payload = _zip_of(
         {
             "PlatformServices.csv": "﻿PlatformUniqueId,Line\nX,victoria\n",
@@ -385,9 +367,6 @@ async def test_a_corrupt_archive_is_reported_clearly() -> None:
 
 async def test_line_status_calls_the_status_endpoint() -> None:
     """line_status() calls the status endpoint."""
-    # Phase 7. The only endpoint here that is polled rather than read once, so
-    # the URL is worth pinning: a typo would mean the poller quietly fetched
-    # the line list forever and every line read as Good Service.
     seen: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -404,10 +383,10 @@ async def test_line_status_calls_the_status_endpoint() -> None:
 
 async def test_line_status_is_retried_like_every_other_call() -> None:
     """line_status() is retried like every other call."""
-    # It reuses _get_json, so the throttle, the 429 handling and the retry all
-    # apply. Asserted rather than assumed, because a poller that gave up on the
-    # first 5xx would go stale silently - there is no user watching a request
-    # fail, which is exactly what makes it worth testing.
+    # It reuses _get_json, so the throttle, the 429 handling and the retry all apply.
+    # Asserted rather than assumed, because a poller that gave up on the first 5xx would
+    # go stale silently - there is no user watching a request fail, which is exactly
+    # what makes it worth testing.
     attempts = 0
 
     def handler(request: httpx.Request) -> httpx.Response:

@@ -3,9 +3,7 @@
 # Production image for the API. Multi-stage, no source mount, non-root.
 #
 # A container that mounts your source and runs --reload is a development
-# convenience, not an artefact you could ship. This is the shippable one, and
-# it exists from Phase 0 rather than Phase 9 because retrofitting it costs a
-# day and writing it now costs an hour.
+# convenience, not an artefact you could ship. This is the shippable one.
 #
 # Build context is the repository root, not backend/, because the uv
 # workspace spans both backend/ and engine/ and the lockfile lives at the top.

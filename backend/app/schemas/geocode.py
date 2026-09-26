@@ -1,35 +1,4 @@
-"""
-The wire format for turning typed text into a station.
-
-WHY THIS EXISTS
-    Everything else in this service assumes you already know which station
-    you want, which is exactly the knowledge a visitor does not have. This is
-    the boundary where "British Museum" becomes "Tottenham Court Road", and
-    the boundary is where the promise gets written down.
-
-NO 2021 EQUIVALENT
-    The old project's station entry was a Tkinter field over a list of names
-    held in the same process. There was nothing to resolve and nothing that
-    could resolve it.
-
-WHAT'S NEW
-    `results` is a list, and that is the entire design.
-
-    "High Street" matches seven places in Britain. "British Museum" matches
-    one. Returning the best guess would make those two look identical to the
-    client and would silently plan a journey to the wrong one - the failure
-    this project has argued against since Phase 3, where an empty search had
-    to be a 200 rather than a 404 so that "no matches" and "broken request"
-    could be told apart.
-
-    So every match comes back with the address Google formatted for it, and a
-    person picks. One match is not a special case in the wire format; it is a
-    list of length one, and the client may resolve it without asking.
-
-    Each match carries its own nearest stations rather than the caller
-    joining them afterwards, because the join is PostGIS and the client has
-    no coordinates and no index.
-"""
+"""The wire format for turning typed text into a station."""
 
 from pydantic import BaseModel, Field
 

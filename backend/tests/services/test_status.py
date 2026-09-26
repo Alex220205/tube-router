@@ -1,24 +1,4 @@
-"""
-Tests for the live status transforms.
-
-WHY THIS EXISTS
-    One decision in this file decides whether a user gets routed down a closed
-    line: which severities mean "not running". Getting it too narrow sends
-    someone to a suspended platform; too wide silently rewrites journeys over
-    a delay that clears in twenty minutes.
-
-    Both failures look like a working service from the outside, which is why
-    the rule is tested in both directions rather than only the obvious one.
-
-NO 2021 EQUIVALENT
-    The old project stored service_status as a column and printed it. Status
-    and the router never met - a suspended line was something you read about
-    after being routed down it - so there was nothing of this kind to test.
-
-CONSTRAINT
-    Pure functions. No network, no database, no Redis. The fixture was
-    captured from the live endpoint so a TfL outage is never a red build.
-"""
+"""Tests for the live status transforms."""
 
 import json
 from pathlib import Path
@@ -54,8 +34,8 @@ def line(code: str, severity: int, description: str = "x", reason: str | None = 
 
 def test_the_real_payload_reads_as_eleven_lines() -> None:
     """The real payload reads as eleven lines."""
-    # Captured from api.tfl.gov.uk on 2026-09-15, with three lines genuinely
-    # degraded at the time. Better evidence than anything hand-written.
+    # Captured from api.tfl.gov.uk on 2026-09-15, with three lines genuinely degraded at
+    # the time. Better evidence than anything hand-written.
     statuses = statuses_from_payload(real_payload())
 
     assert len(statuses) == 11
@@ -67,10 +47,10 @@ def test_the_real_payload_reads_as_eleven_lines() -> None:
     assert "delays" in (by_code["bakerloo"].reason or "").lower()
 
 
-# Severe Delays is the severity it is most tempting to avoid, and avoiding
-# it means rerouting every Piccadilly journey in London over a condition
-# that is often gone within the hour. The captured payload has two lines in
-# exactly that state, and neither may be excluded.
+# Severe Delays is the severity it is most tempting to avoid, and avoiding it means
+# rerouting every Piccadilly journey in London over a condition that is often gone
+# within the hour. The captured payload has two lines in exactly that state, and neither
+# may be excluded.
 def test_delays_are_reported_but_do_not_stop_a_line_running() -> None:
     """The counterweight, and the more important direction."""
     statuses = statuses_from_payload(real_payload())
@@ -81,8 +61,8 @@ def test_delays_are_reported_but_do_not_stop_a_line_running() -> None:
 
 def test_closures_and_suspensions_stop_a_line_running() -> None:
     """Closures and suspensions stop a line running."""
-    # The positive case the real capture cannot show, because nothing was
-    # suspended on the day it was taken.
+    # The positive case the real capture cannot show, because nothing was suspended on
+    # the day it was taken.
     payload = [
         line("piccadilly", 2, "Suspended"),
         line("central", 1, "Closed"),
@@ -98,9 +78,9 @@ def test_closures_and_suspensions_stop_a_line_running() -> None:
 
 def test_an_unknown_severity_is_treated_as_running() -> None:
     """An unknown severity is treated as running."""
-    # TfL can add a code at any time. The optimistic reading being wrong shows
-    # a user a delayed line; the pessimistic reading being wrong deletes a
-    # working line from the network, which is the failure that strands someone.
+    # TfL can add a code at any time. The optimistic reading being wrong shows a user a
+    # delayed line; the pessimistic reading being wrong deletes a working line from the
+    # network, which is the failure that strands someone.
     statuses = statuses_from_payload([line("victoria", 99, "Something New")])
 
     assert statuses[0].running is True
@@ -109,8 +89,8 @@ def test_an_unknown_severity_is_treated_as_running() -> None:
 
 def test_the_worst_of_several_statuses_wins() -> None:
     """The worst of several statuses wins."""
-    # A line can report part of itself suspended while the rest runs normally.
-    # Taking the cheerful half would send someone to a closed platform.
+    # A line can report part of itself suspended while the rest runs normally. Taking
+    # the cheerful half would send someone to a closed platform.
     payload = [
         {
             "id": "district",
@@ -129,9 +109,9 @@ def test_the_worst_of_several_statuses_wins() -> None:
 
 def test_a_malformed_payload_yields_what_it_can_rather_than_raising() -> None:
     """A malformed payload yields what it can rather than raising."""
-    # This runs in a background poller. One bad line must not cost the other
-    # ten, and a shape TfL never sends must not take the task down - it would
-    # stop status updating entirely, with no symptom on the page.
+    # This runs in a background poller. One bad line must not cost the other ten, and a
+    # shape TfL never sends must not take the task down - it would stop status updating
+    # entirely, with no symptom on the page.
     payload = [
         "not a line",
         {"no_id": True},
@@ -149,9 +129,9 @@ def test_a_malformed_payload_yields_what_it_can_rather_than_raising() -> None:
 
 def test_lines_come_back_in_a_stable_order() -> None:
     """Lines come back in a stable order."""
-    # The poller publishes only when the picture changes, and "changed" is an
-    # equality check against the last list. Unstable ordering would wake every
-    # connected client sixty times an hour to say nothing happened.
+    # The poller publishes only when the picture changes, and "changed" is an equality
+    # check against the last list. Unstable ordering would wake every connected client
+    # sixty times an hour to say nothing happened.
     first = statuses_from_payload(real_payload())
     shuffled = list(reversed(real_payload()))
 

@@ -1,24 +1,4 @@
-"""
-GET /lines.
-
-WHY THIS EXISTS
-    The map legend and the objective toggle both need the lines, and both
-    need the colours. Eleven rows, so there is no search, no pagination and
-    no id lookup - asking for all of them is the only sensible request.
-
-WHAT THE 2021 VERSION DID
-    Where:  database[works].py line 729, GUI display of line status
-    How:    SELECT lines.name, lines.service_status FROM lines, rendered
-            straight into the window.
-    Wrong:  service_status was live data in a persistent table, deleted and
-            reinserted on every launch. Reading it from the database meant
-            reading whatever was true the last time the program started.
-
-WHAT CHANGED AND WHY
-    No status here at all. This endpoint serves the things about a line that
-    do not change - code, name, colour, mode. Live status arrives over a
-    websocket in Phase 7, which is where volatile data belongs.
-"""
+"""GET /lines."""
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy.exc import OperationalError

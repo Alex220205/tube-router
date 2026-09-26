@@ -1,35 +1,4 @@
-"""
-Populate the database from the TfL Unified API.
-
-    cd backend && uv run python seed.py
-
-WHY THIS EXISTS
-    A one-off script, deliberately outside app/ because it is not part of the
-    running service and nothing in app/ imports it. It fetches, transforms,
-    writes and then checks - four steps in that order, each of which can be
-    read on its own.
-
-WHAT THE 2021 VERSION DID
-    Where:  database[works].py, the Add*database methods
-    How:    Data was fetched from TfL and inserted in the same functions that
-            drew the user interface, with the SQL inline and no verification
-            afterwards.
-    Wrong:  docs/AUDIT.md has the full account. The short version: the
-            database ended up 70.5% connected with two Central line branches
-            unreachable, 12 links stored as zero minutes, no coordinates at
-            all, and an Overground with 85 stations and no track. None of it
-            was detectable, because nothing ever asked.
-
-WHAT CHANGED AND WHY
-    Drops and reloads, so it can be run as often as you like. Every insert is
-    in one transaction, so a failure leaves the previous contents rather than
-    a half-built network. And it refuses to report success unless the checks
-    in services/seed_checks.py pass.
-
-WHAT'S NEW
-    The data source. The 2021 database is no longer the input - it is the
-    artifact this is measured against.
-"""
+"""Populate the database from the TfL Unified API."""
 
 import asyncio
 import sys
@@ -69,16 +38,16 @@ from app.services.tfl import StationData, TfLClient, TfLError
 DIRECTIONS = ("inbound", "outbound")
 
 
-# The seed makes a few hundred requests, and silence during them is
-# indistinguishable from a hang.
+# The seed makes a few hundred requests, and silence during them is indistinguishable
+# from a hang.
 def log(message: str) -> None:
     """Print one line of progress, flushed immediately."""
     print(message, flush=True)
 
 
-# One timetable per branch, requested from that branch's first station. A
-# line's branches have separate timetables, and asking only from the terminus
-# would leave every branch but one without durations.
+# One timetable per branch, requested from that branch's first station. A line's
+# branches have separate timetables, and asking only from the terminus would leave every
+# branch but one without durations.
 async def _durations_for_payload(
     tfl: TfLClient, code: str, payload: dict
 ) -> dict[tuple[str, str], int]:
@@ -89,17 +58,17 @@ async def _durations_for_payload(
         try:
             timetable = await tfl.timetable(code, origin)
         except TfLError as exc:
-            # Some branch/direction combinations have no timetable. Those
-            # segments fall back to a default, which the seed reports; they
-            # are not a reason to abandon the run.
+            # Some branch/direction combinations have no timetable. Those segments fall
+            # back to a default, which the seed reports; they are not a reason to
+            # abandon the run.
             log(f"  no timetable from {origin}: {exc}")
             continue
         found.update(durations_from_timetable(timetable, origin))
     return found
 
 
-# The raw payloads, untransformed. Keeping fetch separate from
-# transform is what lets the transforms be tested without a network.
+# The raw payloads, untransformed. Keeping fetch separate from transform is what lets
+# the transforms be tested without a network.
 async def fetch_everything(tfl: TfLClient) -> dict[str, object]:
     """Collect every payload the seed needs, in as few requests as possible."""
     log("fetching lines ...")
@@ -138,9 +107,8 @@ async def fetch_everything(tfl: TfLClient) -> dict[str, object]:
     }
 
 
-# Delete in dependency order. CASCADE would do it, but naming the order makes
-# the dependencies visible and means a new table cannot be quietly forgotten
-# here.
+# Delete in dependency order. CASCADE would do it, but naming the order makes the
+# dependencies visible and means a new table cannot be quietly forgotten here.
 async def _clear(session: AsyncSession) -> None:
     """Empty every network table, children first."""
     log("clearing existing data ...")
@@ -148,8 +116,8 @@ async def _clear(session: AsyncSession) -> None:
         await session.execute(delete(model))
 
 
-# Each step returns the id map the later ones need. Postgres assigns those ids
-# on flush, so they can only be learned by asking for them back.
+# Each step returns the id map the later ones need. Postgres assigns those ids on flush,
+# so they can only be learned by asking for them back.
 async def _write_lines(session: AsyncSession, payload: object) -> dict[str, int]:
     """Write every line and return its code to database id."""
     line_rows = lines_from_payload(payload)
@@ -201,10 +169,9 @@ async def _write_stations(
             Station(
                 naptan_id=row.naptan_id,
                 name=row.name,
-                # EWKT, which is what GeoAlchemy2 accepts for a geography
-                # column. Longitude first: that is the axis order 4326 uses
-                # here, and getting it backwards puts London in the Indian
-                # Ocean without any error.
+                # EWKT, which is what GeoAlchemy2 accepts for a geography column.
+                # Longitude first: that is the axis order 4326 uses here, and getting it
+                # backwards puts London in the Indian Ocean without any error.
                 location=f"SRID=4326;POINT({row.lon} {row.lat})",
                 complex_id=complex_ids.get(row.hub_id) if row.hub_id else None,
             )
@@ -222,8 +189,8 @@ async def _write_stations(
     return station_ids
 
 
-# The rows are returned as well as written, because the interchange step is
-# derived from them rather than read back out of the table.
+# The rows are returned as well as written, because the interchange step is derived from
+# them rather than read back out of the table.
 async def _write_station_lines(
     session: AsyncSession,
     sequences: dict[str, list[dict]],
@@ -251,11 +218,10 @@ async def _write_station_lines(
     return station_line_rows
 
 
-# A segment with an end that is not among the stations just written is
-# skipped rather than failing the run. Stations come from /StopPoints and
-# segments from the route sequences, two separate TfL payloads, and
-# seed_checks afterwards confirms every segment still joins two real stations
-# and the network is one piece.
+# A segment with an end that is not among the stations just written is skipped rather
+# than failing the run. Stations come from /StopPoints and segments from the route
+# sequences, two separate TfL payloads, and seed_checks afterwards confirms every
+# segment still joins two real stations and the network is one piece.
 async def _write_segments(
     session: AsyncSession,
     sequences: dict[str, list[dict]],
@@ -321,11 +287,8 @@ async def _write_interchanges(
     log(f"  {len(interchange_rows)} interchanges, {measured} with a measured distance")
 
 
-# Everything happens in the caller's transaction, so a failure anywhere leaves
-# the previous contents intact rather than a half-built network.
-#
-# The order below is the dependency order. Nothing here moves without breaking
-# the id map the next step reads.
+# Everything happens in the caller's transaction, so a failure anywhere leaves the
+# previous contents intact rather than a half-built network.
 async def write_everything(session: AsyncSession, raw: dict[str, object]) -> None:
     """Replace the contents of the database with a freshly built network."""
     sequences: dict[str, list[dict]] = raw["sequences"]
@@ -348,8 +311,8 @@ async def write_everything(session: AsyncSession, raw: dict[str, object]) -> Non
     )
 
 
-# 0 when every check passed, 1 otherwise. A non-zero exit is what makes
-# this usable from a script or from CI.
+# 0 when every check passed, 1 otherwise. A non-zero exit is what makes this usable from
+# a script or from CI.
 async def main() -> int:
     """Fetch, write, check."""
     settings = get_settings()
@@ -360,8 +323,8 @@ async def main() -> int:
         app_key=settings.tfl_app_key,
         timeout_seconds=settings.tfl_timeout_seconds,
         max_attempts=settings.tfl_max_attempts,
-        # Without this the run gets through about a third of the lines and
-        # then TfL starts returning 429.
+        # Without this the run gets through about a third of the lines and then TfL
+        # starts returning 429.
         min_request_interval_seconds=settings.tfl_min_request_interval_seconds,
     ) as tfl:
         raw = await fetch_everything(tfl)
@@ -380,14 +343,9 @@ async def main() -> int:
     return _report(results)
 
 
-# The API holds a built routing graph. Deleting the row cache is not enough on
-# its own - a process that has already built its graph never looks at Redis
-# again, so Phase 6 shipped an invalidation that did nothing for a running
-# service (docs/ISSUES.md #9).
-#
 # Bumping the generation is what a running process actually notices, within
-# graph_loader.GENERATION_CHECK_SECONDS. The rows go too, or the rebuild would
-# read the stale copy it was just told to discard.
+# graph_loader.GENERATION_CHECK_SECONDS. The rows go too, or the rebuild would read the
+# stale copy it was just told to discard.
 async def _tell_running_api() -> None:
     """Make a running API rebuild its graph from what was just written."""
     await cache.delete(graph_loader.CACHE_KEY)

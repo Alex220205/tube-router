@@ -1,19 +1,4 @@
-"""
-Tests for GET /lines and GET /network.
-
-WHY THIS EXISTS
-    The network payload is the one Phase 8 draws from, so the risk is not
-    whether it returns data but whether the pieces line up: a segment naming
-    a station id the stations list does not contain is a map with a line
-    going nowhere, and nothing about the response shape would reveal it.
-
-NO 2021 EQUIVALENT
-    No endpoints, no map, and no way to ask a question about the network as a
-    whole - which is why nobody noticed it was 70.5% connected.
-
-CONSTRAINT
-    Needs a real Postgres with PostGIS.
-"""
+"""Tests for GET /lines and GET /network."""
 
 import os
 
@@ -36,8 +21,8 @@ async def seed_tiny_network(db: AsyncSession) -> None:
     a = await a_station(db, "A", name="Alpha Underground Station", lon=-0.1, lat=51.5)
     b = await a_station(db, "B", name="Beta Underground Station", lon=-0.2, lat=51.6)
 
-    # Two segments written out rather than both_ways, because the times
-    # differ on purpose: one test here is about each direction keeping its own.
+    # Two segments written out rather than both_ways, because the times differ on
+    # purpose: one test here is about each direction keeping its own.
     db.add_all(
         [
             StationLine(station_id=a.id, line_id=line.id),
@@ -63,9 +48,9 @@ async def test_lines_carry_the_colour_the_map_draws_with(
     api: AsyncClient, db: AsyncSession
 ) -> None:
     """Lines carry the colour the map draws with."""
-    # colour is NOT NULL and has no TfL API source - it comes from a
-    # hardcoded map in the seed. If that ever breaks, the map renders in
-    # whatever the default is and looks merely wrong rather than broken.
+    # colour is NOT NULL and has no TfL API source - it comes from a hardcoded map in
+    # the seed. If that ever breaks, the map renders in whatever the default is and
+    # looks merely wrong rather than broken.
     await seed_tiny_network(db)
 
     lines = (await api.get("/lines")).json()
@@ -79,9 +64,9 @@ async def test_every_segment_names_a_station_the_payload_contains(
     api: AsyncClient, db: AsyncSession
 ) -> None:
     """Every segment names a station the payload contains."""
-    # The failure this guards is a line drawn to nowhere. Segments carry ids
-    # rather than nested stations, so the client joins them - and a dangling
-    # id produces a map that is silently missing track.
+    # The failure this guards is a line drawn to nowhere. Segments carry ids rather than
+    # nested stations, so the client joins them - and a dangling id produces a map that
+    # is silently missing track.
     await seed_tiny_network(db)
 
     network = (await api.get("/network")).json()
@@ -97,9 +82,9 @@ async def test_the_network_keeps_both_directions_with_their_own_times(
     api: AsyncClient, db: AsyncSession
 ) -> None:
     """The network keeps both directions with their own times."""
-    # Segments are directional and the two directions genuinely differ -
-    # Waterloo & City is 180 seconds one way and 240 the other in the real
-    # data. Collapsing them would average away real asymmetry.
+    # Segments are directional and the two directions genuinely differ - Waterloo & City
+    # is 180 seconds one way and 240 the other in the real data. Collapsing them would
+    # average away real asymmetry.
     await seed_tiny_network(db)
 
     segments = (await api.get("/network")).json()["segments"]

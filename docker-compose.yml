@@ -3,9 +3,6 @@
 #   cp .env.example .env
 #   docker compose up
 #
-# Phase 0 runs the two data services. The API joins in the next commit and the
-# frontend in the one after, so every commit leaves a stack that starts.
-#
 # Images are pinned to exact versions. "latest" means a clean clone in six
 # months gets something different from what was tested, which defeats the
 # point of shipping a compose file at all.
@@ -15,7 +12,7 @@ name: tube-router
 services:
   # --- Postgres with PostGIS -------------------------------------------------
   # PostGIS rather than plain Postgres because station coordinates are stored
-  # as geography(Point, 4326) from Phase 1, not as two float columns. That
+  # as geography(Point, 4326), not as two float columns. That
   # makes "stations near here" an indexed query rather than a full scan with
   # haversine in Python.
   db:
@@ -46,8 +43,7 @@ services:
       retries: 10
 
   # --- Redis -----------------------------------------------------------------
-  # Nothing uses this until Phase 6. It runs from Phase 0 so that the stack
-  # described by this file is the stack the project ends up with.
+  # Caches the built network and carries live line status between API workers.
   redis:
     image: redis:7.4-alpine
     ports:
@@ -72,7 +68,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       CORS_ORIGINS: ${CORS_ORIGINS}
-      # Run-time, unlike the frontend's VITE_API_URL above: this is read by
+      # Run-time, unlike the frontend's VITE_API_URL below: this is read by
       # the API process, never baked into anything, so a new key is a
       # restart rather than a rebuild. Empty when unset, which the service
       # treats as "the feature is off" rather than as an error.
@@ -97,7 +93,7 @@ services:
       # healthcheck above. Making this one fail on a degraded database would
       # have it lie about a service it does not own, and would block the
       # frontend from starting - so the page that exists to display "database
-      # unreachable" would never load. See docs/DECISIONS.md.
+      # unreachable" would never load.
       #
       # No curl or wget in python:3.12-slim, and adding one to a production
       # image for the sake of a healthcheck is not worth it. Python is

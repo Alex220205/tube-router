@@ -1,29 +1,4 @@
-/**
- * Whether the API is up, and whether it can reach Postgres.
- *
- * WHY THIS EXISTS
- *     **Not currently mounted.** It was the corner card on the map until it
- *     was taken off for looking like a debug panel on a page meant to look
- *     like a journey planner. Kept whole, working and tested rather than
- *     deleted, because the thing it shows is worth showing somewhere - an
- *     about page, a footer, a deploy check - and reconstructing it later from
- *     a diff would cost more than a file that already works.
- *
- *     Drop it back in with `<ApiStatus />`. It fetches its own health and
- *     holds its own state, so nothing else has to know about it.
- *
- * NO 2021 EQUIVALENT
- *     The old project was one process reading SQLite. There was no service to
- *     be up or down, and nothing that could be running while its database was
- *     not.
- *
- * WHAT'S NEW
- *     The distinction this exists for. **Degraded** means the API answered and
- *     told us Postgres is unreachable; **unreachable** means the API itself
- *     did not answer. They look almost identical on screen and send you to
- *     completely different places to fix them, so the page never conflates
- *     them - which is the one thing its tests actually check.
- */
+/** Whether the API is up, and whether it can reach Postgres. */
 
 import { useEffect, useState } from 'react'
 import { fetchHealth } from '../api'
@@ -43,9 +18,9 @@ export default function ApiStatus() {
 
     fetchHealth()
       .then((payload) => {
-        // The component can unmount before the request settles - in
-        // development, React's StrictMode guarantees it by mounting twice.
-        // Setting state afterwards is a warning and a leak.
+        // The component can unmount before the request settles - in development,
+        // React's StrictMode guarantees it by mounting twice. Setting state afterwards
+        // is a warning and a leak.
         if (cancelled) return
         setHealth(payload)
         setState(REACHED)

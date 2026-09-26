@@ -28,9 +28,6 @@ jobs:
     # The schema tests assert what Postgres rejects, which cannot be faked
     # with a stub the way the /health tests fake a session. They need a real
     # server with PostGIS, so CI runs one.
-    #
-    # The engine job needs nothing and gets nothing - if engine tests ever
-    # require a database, something has gone wrong in engine/.
     services:
       db:
         image: postgis/postgis:16-3.4
@@ -46,7 +43,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
-      # Phase 7. Only the pub/sub test needs this, and it skips without
+      # Only the pub/sub test needs this, and it skips without
       # TEST_REDIS_URL below - a test that skips everywhere is worse than no
       # test, so CI is where it is guaranteed to run.
       redis:
@@ -129,9 +126,9 @@ jobs:
       # so a hand-written mock can assert an interface that does not exist and
       # the suite will agree with it.
       #
-      # Phase 8a is the worked example: maplibre-gl v6 has no default export,
-      # the mock invented one, eleven tests passed, and only the build failed.
-      # This is also the command the production Dockerfile runs, so without it
+      # maplibre-gl v6 has no default export: a mock that invents one passes
+      # every test, and only the build fails. This is also the command the
+      # production Dockerfile runs, so without it
       # a dependency that breaks the container is found at deploy time.
       - name: Build
         run: npm run build

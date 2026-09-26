@@ -1,22 +1,4 @@
-"""
-Wire format for the whole drawable network.
-
-WHY THIS EXISTS
-    Phase 8's map needs every station and every link before it can draw
-    anything. This is that, in one response.
-
-NO 2021 EQUIVALENT
-    The old project drew no map. Its equivalent of a network was a dict of
-    dicts rebuilt from SQL on every search and discarded afterwards, which is
-    why nothing could ever ask a question about the graph as a whole - not
-    even whether it was connected. It was not: 244 of 346 stations.
-
-WHAT'S NEW
-    Segments carry station *ids*, not nested station objects. Oxford Circus
-    is on three lines and appears in a dozen segments; nesting would repeat
-    it every time and make the payload several times larger for no gain. The
-    client joins once against the stations list.
-"""
+"""Wire format for the whole drawable network."""
 
 from pydantic import BaseModel, Field
 
@@ -33,11 +15,6 @@ class NetworkSegment(BaseModel):
     seconds: int = Field(description="Ride time in seconds. Always > 0.")
 
 
-# Its own class rather than a field on StationPublic, because the search box
-# and the station detail page use that one and neither reads accessibility.
-# A field nobody reads is worse than its absence - see CODE_STYLE.md section
-# 10 - and putting it here keeps the cost with the only caller that wants
-# it.
 class NetworkStation(StationPublic):
     """A station as the map needs it: position plus whether it is accessible."""
 

@@ -8,8 +8,7 @@ requires-python = ">=3.12"
 #
 # The engine imports nothing web-related and nothing database-related. This
 # line is the shortest possible statement of that rule, and it is the first
-# thing a reader checks. Enforced mechanically by engine/tests/test_imports.py
-# from Phase 6 onward.
+# thing a reader checks. Enforced mechanically by engine/tests/test_imports.py.
 dependencies = []
 
 [dependency-groups]

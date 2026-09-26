@@ -1,26 +1,44 @@
 # Tube Router
 
-A London Underground journey planner. Rewrite of a 2021 A-level project, built
-to fix what was wrong with it rather than to re-skin it.
+A London Underground journey planner that knows what is running.
 
-> **Status: Phase 0 - scaffold.** The stack runs and reports its own health.
-> Routing arrives in Phases 4-6.
+Pick two stations and it finds the fastest route, the one with the fewest
+changes, or a step-free one, across all 272 stations. It follows TfL's live
+line status as it changes: a suspended line is routed around, and a line that
+is only partly closed loses just the closed stretch. The route is drawn over
+an interactive map of the network, with every leg and stop written out beside
+it.
 
-## What this is
+## Features
 
-Three parts, and the separation between them is the point:
+- **Three ways to plan a journey.** Fastest, fewest changes, or step-free,
+  where every platform you board, change at and leave from has to be
+  accessible.
+- **Live disruption.** Line status is polled from TfL and pushed to the page
+  over a WebSocket, coloured by severity. Closures and suspensions change the
+  route; delays are reported but never silently reroute you.
+- **The whole network on a map.** Lines that share track are drawn side by
+  side, step-free stations are ringed, and a planned route is drawn over the
+  dimmed network.
+- **Search by place, not just by station** *(optional)*. Type "British Museum"
+  and get the nearest stations to walk from.
+- **What is near your destination** *(optional)*. Places to eat, drink and
+  visit around the station you arrive at, with a Street View photograph of the
+  exit.
+
+## How it is built
 
 | Folder | What it is |
 |---|---|
-| `engine/` | The routing engine. Pure Python, zero dependencies, no I/O. Give it a graph and a query, it gives you a route. |
-| `backend/` | The **web service** - FastAPI, Postgres, Redis. Not "all the Python"; it serves HTTP and owns the data. |
-| `frontend/` | React + Vite + MapLibre. |
+| `engine/` | The routing engine. Dijkstra over (station, line) pairs, so changing line has a real cost. Pure Python, no dependencies, no I/O, and checked with `mypy --strict`. |
+| `backend/` | The web service: FastAPI over PostgreSQL with PostGIS, and Redis. It seeds the network from TfL, polls live status and serves the API. |
+| `frontend/` | React, Vite and MapLibre. |
 
 `engine/` sits beside `backend/` rather than inside it because it does not
-belong to the web service - it is a package the web service happens to
-consume. It imports nothing web-related and nothing database-related, and
-`backend/app/services/graph_loader.py` is the single file allowed to bridge the
-two.
+belong to the web service. It imports nothing web-related and nothing
+database-related, a test enforces that, and
+`backend/app/services/graph_loader.py` is the single file allowed to bridge
+the two.
 
 ## Running it
 
@@ -41,8 +59,7 @@ It takes about two minutes. The seed reads TfL's public API - no key needed -
 and deliberately waits 1.3 seconds between requests, because TfL allows 50 a
 minute to unauthenticated callers and a full tube load is about ninety. It
 finishes by printing seven checks, including whether the graph is one connected
-piece; that one fails on the 2021 data and is the single most useful line of
-output.
+piece.
 
 You only need it again after `docker compose down -v`, which deletes the volume
 and therefore the data.
@@ -53,11 +70,6 @@ and therefore the data.
 | API | http://localhost:8000 |
 | API docs | http://localhost:8000/docs |
 | Health | http://localhost:8000/health |
-
-Pick two stations, choose fastest, fewest changes or step-free, and the route
-is drawn over the network with its legs written out beside it. Live disruption
-from TfL arrives over a WebSocket, and a line that is part closed has only its
-closed stretch avoided rather than the whole line.
 
 ### Changing the code
 
@@ -107,10 +119,10 @@ Then `docker compose up -d api`. No rebuild: unlike the frontend's
 
 Get a key from the [Google Cloud console](https://console.cloud.google.com/)
 and **restrict it to Places API (New), Street View Static API and Geocoding
-API**. It must be a plain API key rather than one bound to a service
-account. The key
-stays on the server, including for the photograph, which is proxied rather
-than linked - a signed Google URL in the page would be a key in the page.
+API**. It must be a plain API key rather than one bound to a service account.
+The key stays on the server, including for the photograph, which is proxied
+rather than linked - a signed Google URL in the page would be a key in the
+page.
 
 Nothing is requested until the section is opened, and answers are cached, so
 browsing routes costs nothing.
@@ -119,20 +131,15 @@ browsing routes costs nothing.
 
 ```bash
 cd engine   && uv run pytest      # no database or server needed
-cd backend  && uv run pytest
+cd backend  && uv run pytest      # database tests run while the db container is up
 cd frontend && npm test
 ```
 
-## Documentation
+CI runs all three on every push to `main`, along with linting, type checking,
+the production build and a secret scan across the whole history.
 
-The reasoning behind this rewrite - an audit of the 2021 database, a dated
-decision log, the commenting standard the source holds itself to, and a
-per-phase record - is kept as a working document rather than published here.
+## Data
 
-What is in the repository speaks for itself: every non-trivial file opens with
-a header saying what it does, what the 2021 version did, and what was wrong
-with it.
-
-## The 2021 version
-
-Link and comparison to follow in Phase 10.
+Stations, lines, timetables, accessibility and live status: Powered by TfL Open
+Data. Place details, geocoding and Street View imagery come from Google Maps
+Platform when a key is configured.

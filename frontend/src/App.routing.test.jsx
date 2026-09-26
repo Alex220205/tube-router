@@ -1,26 +1,4 @@
-/**
- * Tests for planning a journey.
- *
- * WHY THIS EXISTS
- *     Two risks, one test each, and both are things that look completely
- *     healthy on screen while being wrong.
- *
- *     A toggle that renders its selection but does not change the request.
- *     Every other test here would still pass: the radio is checked, a route
- *     comes back, legs are drawn - and it is the same route every time.
- *
- *     A route that does not exist rendering as nothing at all, which the user
- *     cannot tell from a request that failed.
- *
- *     Both go through App rather than the components in isolation, because in
- *     both cases the defect is in the wiring between them and a test of
- *     either half alone would pass.
- *
- * NO 2021 EQUIVALENT
- *     There was one search, optimising time, and no tests. The old project
- *     reported "no route" by returning the literal 9999999 and hoping the
- *     caller checked.
- */
+/** Tests for planning a journey. */
 
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -65,15 +43,7 @@ function ok(body) {
   return { ok: true, status: 200, json: async () => body }
 }
 
-/**
- * Stub every endpoint the page calls, and record what was posted to /route.
- *
- * fetch is stubbed rather than the api module, so api.js - the URL building,
- * the JSON body, the status check - is exercised by these tests too.
- *
- * @param {object} route What /route answers with.
- * @returns {Array<object>} The request bodies, in order, as they are sent.
- */
+/** Stub every endpoint the page calls, and record what was posted to /route. */
 function mockApi(route) {
   const asked = []
 
@@ -97,14 +67,7 @@ function mockApi(route) {
   return asked
 }
 
-/**
- * Pick Oxford Circus as the origin and Green Park as the destination.
- *
- * Typing is not optional: a box shows no list until something is in it, which
- * is what stops the page opening with all 272 stations between the From box
- * and everything below it. The mock answers every query with both stations,
- * so what is typed only has to be non-empty.
- */
+/** Pick Oxford Circus as the origin and Green Park as the destination. */
 async function chooseBothEnds() {
   await userEvent.type(screen.getByLabelText('From'), 'ox')
   await userEvent.click(await screen.findByRole('button', { name: 'Oxford Circus' }))
@@ -133,9 +96,9 @@ describe('planning a journey', () => {
 
     await userEvent.click(screen.getByLabelText('Step-free'))
 
-    // The point of the test. A toggle that renders its selection correctly
-    // and keeps asking for the fastest route is invisible from everywhere
-    // else - the page shows a checked radio and a plausible journey.
+    // The point of the test. A toggle that renders its selection correctly and keeps
+    // asking for the fastest route is invisible from everywhere else - the page shows a
+    // checked radio and a plausible journey.
     await waitFor(() => expect(asked).toHaveLength(2))
     expect(asked.at(-1).objective).toBe('step_free')
   })
@@ -154,8 +117,8 @@ describe('planning a journey', () => {
     render(<App />)
     await chooseBothEnds()
 
-    // found: false is a successful answer, and arrives as a 200. Rendering
-    // nothing would leave it indistinguishable from a request that failed.
+    // found: false is a successful answer, and arrives as a 200. Rendering nothing
+    // would leave it indistinguishable from a request that failed.
     expect(
       await screen.findByText('No route between these two stations.'),
     ).toBeInTheDocument()

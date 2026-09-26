@@ -3,8 +3,6 @@
 # This file defines no project of its own. It exists to tie `engine/` and
 # `backend/` into one workspace with a single lockfile, and to hold the
 # tool configuration that applies across both.
-#
-# See docs/DECISIONS.md, "One uv workspace at the root, two members".
 
 [tool.uv.workspace]
 members = ["backend", "engine"]
@@ -58,7 +56,6 @@ select = [
 # Deliberately scoped. The engine is pure Python with no framework types to
 # fight, so strictness is cheap there and load-bearing. Extending it across
 # the backend turns it into a chore that eventually gets switched off.
-# See docs/DECISIONS.md.
 [tool.mypy]
 python_version = "3.12"
 files = ["engine/tube_engine"]

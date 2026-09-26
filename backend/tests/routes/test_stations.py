@@ -1,20 +1,4 @@
-"""
-Tests for the station endpoints.
-
-WHY THIS EXISTS
-    These are the first endpoints that read real data, so the risks are about
-    the shape of an answer rather than whether a query runs: does an empty
-    result look like success or like an error, does a bad id fail before
-    touching the database, does the geography column come back as usable
-    numbers.
-
-NO 2021 EQUIVALENT
-    There were no endpoints and no tests. The interface queried SQLite
-    directly, so the only possible client was the desktop window.
-
-CONSTRAINT
-    Needs a real Postgres with PostGIS. Skips when TEST_DATABASE_URL is unset.
-"""
+"""Tests for the station endpoints."""
 
 import os
 
@@ -67,9 +51,9 @@ async def test_search_matches_a_substring_not_just_a_prefix(
     api: AsyncClient, db: AsyncSession
 ) -> None:
     """Search matches a substring, not just a prefix."""
-    # Names are stored verbatim, suffix included, so "Oxford Circus
-    # Underground Station" has to be findable by typing a word from the
-    # middle. A prefix match would find nothing for "circus".
+    # Names are stored verbatim, suffix included, so "Oxford Circus Underground Station"
+    # has to be findable by typing a word from the middle. A prefix match would find
+    # nothing for "circus".
     await seed_two_stations(db)
 
     response = await api.get("/stations", params={"q": "circus"})
@@ -82,9 +66,9 @@ async def test_search_returns_coordinates_the_right_way_round(
     api: AsyncClient, db: AsyncSession
 ) -> None:
     """Search returns coordinates the right way round."""
-    # ST_X is longitude and ST_Y is latitude, which reads backwards to anyone
-    # thinking in "lat, lon". Swapping them puts London in the Indian Ocean
-    # and raises nothing at all.
+    # ST_X is longitude and ST_Y is latitude, which reads backwards to anyone thinking
+    # in "lat, lon". Swapping them puts London in the Indian Ocean and raises nothing at
+    # all.
     await seed_two_stations(db)
 
     station = (await api.get("/stations", params={"q": "oxford"})).json()[0]
@@ -97,9 +81,8 @@ async def test_a_search_matching_nothing_is_an_empty_list_not_a_404(
     api: AsyncClient, db: AsyncSession
 ) -> None:
     """A search matching nothing is an empty list, not a 404."""
-    # "No stations called zzz" is a successful answer to a reasonable
-    # question. A 404 would make the frontend render an error for someone
-    # halfway through typing.
+    # "No stations called zzz" is a successful answer to a reasonable question. A 404
+    # would make the frontend render an error for someone halfway through typing.
     await seed_two_stations(db)
 
     response = await api.get("/stations", params={"q": "zzzzz"})
@@ -128,8 +111,8 @@ async def test_a_station_carries_its_lines_and_accessibility(
 
     assert station["name"] == "Oxford Circus Underground Station"
     assert [line["code"] for line in station["lines"]] == ["victoria"]
-    # Step-free is per (station, line), which is why it is nested here rather
-    # than sitting on the station.
+    # Step-free is per (station, line), which is why it is nested here rather than
+    # sitting on the station.
     assert station["lines"][0]["step_free_to_platform"] is True
 
 
@@ -148,9 +131,9 @@ async def test_a_non_positive_id_is_a_400_not_a_404(
     api: AsyncClient, db: AsyncSession, station_id: int
 ) -> None:
     """A non-positive id is a 400, not a 404."""
-    # The request is malformed, not pointing at something absent, and a 404
-    # would misdescribe it. It also fails before touching the database,
-    # because no query can match a negative id.
+    # The request is malformed, not pointing at something absent, and a 404 would
+    # misdescribe it. It also fails before touching the database, because no query can
+    # match a negative id.
     response = await api.get(f"/stations/{station_id}")
 
     assert response.status_code == 400

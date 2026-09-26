@@ -1,24 +1,4 @@
-"""
-GET /stations and GET /stations/{id}.
-
-WHY THIS EXISTS
-    The first endpoints that read the seeded network. Everything before this
-    put data in; these are what let anything get it out.
-
-WHAT THE 2021 VERSION DID
-    Where:  database[works].py, GUI.Find_shortest_path and the Display*
-            methods
-    How:    The interface queried SQLite directly and rendered the result in
-            the same function.
-    Wrong:  There was no boundary, so there was nothing to test and nothing
-            another client could ever consume. The desktop window was the
-            only possible front end.
-
-WHAT CHANGED AND WHY
-    A handler validates, calls one function in services/, and shapes the
-    reply. No SQL here, and no reasoning either - both live in
-    services/stations.py, where they can be exercised without HTTP.
-"""
+"""GET /stations and GET /stations/{id}."""
 
 from typing import Annotated
 
@@ -33,16 +13,8 @@ from app.services import stations as station_service
 router = APIRouter(prefix="/stations", tags=["stations"])
 
 
-# session: Injected per request.
-# q: What the user typed. Blank or absent returns everything up to the
-#     limit, because the search box starts empty and a 400 there would
-#     be noise.
-# limit: Capped by the query parameter itself, so an absurd value is a
-#     422 from FastAPI before any code runs.
-#
-# Matching stations, ordered by name. An empty list when nothing
-# matches - not a 404. "No stations called zzz" is a successful answer
-# to a reasonable question.
+# Matching stations, ordered by name. An empty list when nothing matches - not a 404.
+# "No stations called zzz" is a successful answer to a reasonable question.
 @router.get(
     "",
     response_model=list[StationPublic],
@@ -76,9 +48,9 @@ async def search_stations(
 async def get_station(station_id: int, session: SessionDep) -> StationRead:
     """Fetch one station, with the lines calling at it."""
     try:
-        # Guard before touching the database. A negative id cannot match
-        # anything, so asking is wasted work and a 404 would misdescribe it -
-        # the request is malformed, not pointing at something absent.
+        # Guard before touching the database. A negative id cannot match anything, so
+        # asking is wasted work and a 404 would misdescribe it - the request is
+        # malformed, not pointing at something absent.
         if station_id <= 0:
             raise HTTPException(
                 status_code=400, detail="Station ID must be a positive integer"
@@ -92,9 +64,8 @@ async def get_station(station_id: int, session: SessionDep) -> StationRead:
 
         return StationRead(**station)
     except HTTPException:
-        # First, or the handler below swallows the 404 and reports it as a
-        # 500 - which sends whoever is debugging it to entirely the wrong
-        # place.
+        # First, or the handler below swallows the 404 and reports it as a 500 - which
+        # sends whoever is debugging it to entirely the wrong place.
         raise
     except OperationalError as exc:
         # The database being briefly unavailable is not a bug in this service.

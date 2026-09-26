@@ -26,8 +26,8 @@ seed never reads. **No value was altered.** Only whole fields were removed:
 | `lines_tube.json` | `lineStatuses`, `disruptions`, `routeSections`, `crowding`, `created`, `modified` | Live status that changes hourly. A fixture that differs on every capture is not a fixture |
 | `timetable_*.json` | `routes[].schedules`, `routes[].serviceType` | Every departure of every day. 85% of the file; the seed reads `stationIntervals` |
 | `stop_points_*.json` | `additionalProperties`, `children`, `lineGroup`, `lineModeGroups`, `lines` | 15 facility entries per stop. Step-free comes from `PlatformServices.csv`, not from here |
-| `route_sequence_*.json` | `lineStrings`, `stopPoint[].lines` | Encoded polyline geometry. Phase 8 will want it; Phase 2 does not |
-| `PlatformServices.csv` | Non-tube rows | Phase 2 is tube only. National Rail, DLR, Elizabeth, tram and cable car dropped |
+| `route_sequence_*.json` | `lineStrings`, `stopPoint[].lines` | Encoded polyline geometry. The seed does not read it |
+| `PlatformServices.csv` | Non-tube rows | The seed is tube only. National Rail, DLR, Elizabeth, tram and cable car dropped |
 
 The trade is deliberate: a fixture small enough to read in a diff, against one
 that proves the parser tolerates every field TfL sends. The parsers here select

@@ -1,19 +1,4 @@
-"""
-Builders shared by the database tests.
-
-WHY THIS EXISTS
-    So a test reads as its scenario rather than its setup. A line, a station
-    and track in both directions are where nearly every database test starts,
-    and building them in one place means a fix here reaches every test that
-    uses them.
-
-    Everything a test asserts on - a colour, a name, a coordinate - is passed
-    by the test that asserts it, never left to a default here. A default is
-    for the values nobody checks.
-
-NO 2021 EQUIVALENT
-    The old project had no tests.
-"""
+"""Builders shared by the database tests."""
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,9 +15,9 @@ async def a_line(
     return line
 
 
-# Keyword-only past the id, because two floats in a row is exactly how
-# longitude and latitude get swapped - and a swapped station is still a valid
-# row, just one in the wrong hemisphere.
+# Keyword-only past the id, because two floats in a row is exactly how longitude and
+# latitude get swapped - and a swapped station is still a valid row, just one in the
+# wrong hemisphere.
 async def a_station(
     db: AsyncSession,
     naptan_id: str,
@@ -52,8 +37,8 @@ async def a_station(
     return station
 
 
-# Both directions at the same time, as the real seed writes most track. A test
-# about asymmetry adds its two segments itself.
+# Both directions at the same time, as the real seed writes most track. A test about
+# asymmetry adds its two segments itself.
 async def both_ways(
     db: AsyncSession,
     line: Line,
